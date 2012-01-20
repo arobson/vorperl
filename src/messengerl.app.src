@@ -1,0 +1,19 @@
+{application, messengerl, [
+	{description, "RabbitMQ API"},
+	{vsn, "0.0.1"},
+	{modules, [
+		messengerl_app, 
+		messengerl_sup,
+		subscription_sup,
+		amqp,
+		queue_subscriber
+		]},
+	{registered, [amqp]},
+	{applications, [
+		kernel,
+		stdlib,
+		sasl
+	]},
+	{mod, {messengerl_app, []}},
+	{env, []}
+]}.
