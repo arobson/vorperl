@@ -1,15 +1,17 @@
 -record(broker, {
-	user="guest", 
-	password="guest", 
-	host="localhost", 
-	virtual_host="/", 
+	name= <<"default">>,
+	user= <<"guest">>, 
+	password= <<"guest">>, 
+	host= <<"localhost">>, 
+	virtual_host= <<"/">>, 
 	port=5672, 
 	max_channels=0, 
 	max_frames=0, 
 	heartbeat=0, 
 	ssl_options={}, 
 	auth=[], 
-	client={}}).
+	client={},
+	connection=undefined}).
 
 -record(envelope, {exchange, queue, key, content_type, body, ack, nack, reply}).
 

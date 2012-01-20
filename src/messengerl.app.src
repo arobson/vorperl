@@ -6,6 +6,8 @@
 		messengerl_sup,
 		subscription_sup,
 		amqp,
+		amqp_util
+		connection_pool,
 		queue_subscriber
 		]},
 	{registered, [amqp]},

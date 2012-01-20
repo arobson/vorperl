@@ -89,13 +89,13 @@ send(Exchange, Message, RoutingKey) ->
 
 send(Exchange, Message, RoutingKey, Flags) ->
 	gen_server:cast(?SERVER, {send, 
-		to_bin(Exchange), 
+		amqp_util:to_bin(Exchange), 
 		Message, 
-		to_bin(RoutingKey), 
+		amqp_util:to_bin(RoutingKey), 
 		Flags}).
 
 define(Topology=#topology{}) ->
-	declare(topology_to_bin(Topology)).
+	declare(amqp_util:topology_to_bin(Topology)).
 
 %%===================================================================
 %%% gen_server
@@ -135,9 +135,9 @@ handle_cast({create_queue, Queue, QueueConfig}, State) ->
 
 handle_cast({bind, Exchange, Queue, Topic}, State) ->
 	{noreply, bind(
-		to_bin(Exchange), 
-		to_bin(Queue), 
-		to_bin(Topic), 
+		amqp_util:to_bin(Exchange), 
+		amqp_util:to_bin(Queue), 
+		amqp_util:to_bin(Topic), 
 		State)};
 
 handle_cast({send, Exchange, MessageBody, RoutingKey, Flags}, State) ->
@@ -169,19 +169,7 @@ bind(Exchange, Queue, RoutingKey, State) ->
 	#'queue.bind_ok'{} = amqp_channel:call(Channel, Binding),
 	State2.
 
-control_channel(State) ->
-	case State#state.control_channel of
-		undefined -> 
-			NewChannel = get_channel(State),
-			{NewChannel, State#state{ control_channel=NewChannel}};
-		Channel -> {Channel, State}
-	end.
 
-connect() ->
-	amqp_connection:start(connection_details()).
-
-connection_details() ->
-	#amqp_params_network{}.
 
 declare_exchange(Exchange, ExchangeConfig, State) ->
 	Declare = #'exchange.declare'{
@@ -210,12 +198,6 @@ declare_queue(Queue, QueueConfig, State) ->
 	Queue_Channels = dict:append(Queue, QueueChannel, State3#state.queue_channels),
 	
 	State3#state{queue_channels = Queue_Channels}.
-
-get_channel(#state{connection=Connection}) ->
-	case amqp_connection:open_channel(Connection) of
-		{ok, Channel} -> Channel;
-		_ -> undefined
-	end.
 
 
 			
@@ -252,31 +234,4 @@ send_channel(State)->
 		Channel -> {Channel, State}
 	end.
 
-exchange_config_to_bin(undefined) ->
-	undefined;
-exchange_config_to_bin(Config=#exchange_config{}) ->
-	Config#exchange_config{
-		type=to_bin(Config#exchange_config.type)
-	}.
 
-queue_config_to_bin(undefined) ->
-	undefined;
-queue_config_to_bin(Config=#queue_config{}) ->
-	Config#queue_config{
-	}.
-
-topology_to_bin(Topology=#topology{}) ->
-	Topology#topology{
-		exchange=to_bin(Topology#topology.exchange),
-		queue=to_bin(Topology#topology.queue),
-		topic=to_bin(Topology#topology.topic),
-		exchange_config=exchange_config_to_bin(Topology#topology.exchange_config),
-		queue_config=queue_config_to_bin(Topology#topology.queue_config)
-	}.
-
-to_bin(X) when is_atom(X) ->
-	undefined;
-to_bin(X) when is_list(X) ->
-	list_to_bitstring(X);
-to_bin(X) when is_bitstring(X) ->
-	X.
