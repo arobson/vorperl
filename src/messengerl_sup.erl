@@ -26,7 +26,9 @@ init([]) ->
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
     Amqp = create_child_spec(amqp, worker, permanent, 2000, []),
+    Connections = create_child_spec(connection_pool, worker, permanent, 2000, []).
     Subscriptions =create_child_spec(subscription_sup, supervisor, permanent, 2000, []),
+
     {ok, {SupFlags, [Amqp, Subscriptions]}}.
 
 %%===================================================================

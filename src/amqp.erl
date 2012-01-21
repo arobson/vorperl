@@ -169,8 +169,6 @@ bind(Exchange, Queue, RoutingKey, State) ->
 	#'queue.bind_ok'{} = amqp_channel:call(Channel, Binding),
 	State2.
 
-
-
 declare_exchange(Exchange, ExchangeConfig, State) ->
 	Declare = #'exchange.declare'{
 		exchange=Exchange,
@@ -198,8 +196,6 @@ declare_queue(Queue, QueueConfig, State) ->
 	Queue_Channels = dict:append(Queue, QueueChannel, State3#state.queue_channels),
 	
 	State3#state{queue_channels = Queue_Channels}.
-
-
 			
 new_state(Connection) ->
 	#state{
@@ -210,28 +206,8 @@ new_state(Connection) ->
 		subscriptions = dict:new()
 		}.
 
-queue_channel(Queue, State) ->
-	Channels=State#state.queue_channels,
-	case dict:is_key(Queue, Channels) of
-		true -> {dict:fetch(Queue, Channels), State};
-		false -> 
-			NewChannel = get_channel(State),
-			NewChannels = dict:append(Queue, NewChannel, Channels),
-			{NewChannel, State#state{queue_channels=NewChannels}}
-	end.
-
 send_message(Exchange, Message, RoutingKey, _Flags, State) ->
 	{Channel, State2} = send_channel(State),
 	Publish = #'basic.publish'{exchange=Exchange, routing_key=RoutingKey},
 	amqp_channel:cast(Channel, Publish, #amqp_msg{payload=Message}),
 	State2.
-
-send_channel(State)->
-	case State#state.exchange_channel of
-		undefined -> 
-			NewChannel = get_channel(State),
-			{NewChannel, State#state{exchange_channel=NewChannel}};
-		Channel -> {Channel, State}
-	end.
-
-

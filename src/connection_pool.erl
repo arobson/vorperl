@@ -10,7 +10,7 @@
 
 -behavior(gen_server).
 
--export([ add_broker/0, add_broker/1, get_channel/1]).
+-export([ add_broker/0, add_broker/1, get_channel/1, get_channel/2]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -35,6 +35,9 @@ add_broker(Broker=#broker{}) ->
 get_channel(Key) ->
 	gen_server:call(?SERVER, {channel, Key}).
 
+get_channel(Broker, Key) ->
+	gen_server:call(?SERVER, {channel, Broker, Key}).
+
 %%===================================================================
 %%% gen_server
 %%===================================================================
@@ -52,10 +55,16 @@ handle_call(state, _From, State) ->
   {reply, State, State};
  
 handle_call({broker, Broker}, _From, State) ->
-	{reply, ok, create_connection_for(Broker, State)};
+	{_, State2} = create_connection_for(Broker, State),
+	{reply, ok, State2};
 
 handle_call({channel, Key}, _From, State) ->
-	{reply, ok, get_channel_for(Key, State)};
+	{Channel, State2} = get_channel_for(Key, State),
+	{reply, Channel, State2};
+
+handle_call({channel, Broker, Key}, _From, State) ->
+	{Channel, State2} = get_channel_for(Broker, Key, State),
+	{reply, Channel, State2};
 
 handle_call(_Request, _From, State) ->
   {reply, ok, State}.
@@ -112,11 +121,13 @@ create_connection_for(Broker, State) ->
 get_connection(State) ->
 	Brokers = State#state.brokers,
 	BrokerList = dict:fetch_keys(Brokers),
+	%need to eventually put some 'real' logic here
 	[K1 | _ ] = BrokerList,
-	B = dict:fetch(K1),
+	B = dict:fetch(K1, Brokers),
+	create_connection_for(B, State).
 
 
-get_channel(State) ->
+get_channel(Connection) ->
 	case amqp_connection:open_channel(Connection) of
 		{ok, Channel} -> Channel;
 		_ -> undefined
@@ -125,23 +136,12 @@ get_channel(State) ->
 get_channel_for(Key, State) ->
 	Channels = State#state.channels,
 	case dict:is_key(Key, Channels) ->
-		true -> dict:fetch(Key, Channels);
+		true -> {dict:fetch(Key, Channels), State};
 		_ ->
-			
-
-
-control_channel(State) ->
-	case State#state.control_channel of
-		undefined -> 
-			NewChannel = get_channel(State),
-			{NewChannel, State#state{ control_channel=NewChannel}};
-		Channel -> {Channel, State}
+			{Connection, State2} = get_connection(state),
+			Channel = get_channel(Connection),
+			State3 = State2#state{ channels = dict:append(Key, Channel, Channels)},
+			{Channel, State3}
 	end.
-
-connect() ->
-	amqp_connection:start(connection_details()).
-
-connection_details() ->
-	#amqp_params_network{}.
 
 
