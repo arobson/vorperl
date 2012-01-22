@@ -10,7 +10,7 @@
 
 -behavior(gen_server).
 
--export([ add_broker/0, add_broker/1, get_channel/1, get_channel/2]).
+-export([ start_link/0, add_broker/0, add_broker/1, get_channel/1, get_channel/2]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -20,7 +20,7 @@
 
 -include("amqp_client.hrl").
 
--record(state, {brokers=dict:new(), channels=dict:new())}).
+-record(state, {brokers=dict:new(), channels=dict:new()}).
 
 %%===================================================================
 %%% API
@@ -46,7 +46,7 @@ start_link() ->
 	gen_server:start_link({local,?SERVER}, ?MODULE, [], []).
 
 init([]) ->
-	{ok, #state{}}
+	{ok, #state{}}.
 
 handle_call(stop, _From, State) ->
   {stop, normal, stopped, State};
@@ -81,67 +81,71 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
-to_connection(#broker{
-		user = User,
-		password = Password,
-		virtual_host = VirtualHost,
-		host = Host,
-		port = Port,
-		max_channels = MaxChannels,
-		max_frames = MaxFrames,
-		heartbeat = HeartBeat,
-		ssl_options = SSL,
-		auth = Auth,
-		client = Client
-	}) ->
-
-	amqp_params_network#{
-		user = User,
-		password = Password,
-		virtual_host = VirtualHost,
-		port = Port,
-		host = Host,
-		channel_max = MaxChannels,
-		frame_max = MaxFrames,
-		heartbeat = HeartBeat,
+to_connection(Broker) ->
+	#amqp_params_network{
+		username = Broker#broker.user,
+		password = Broker#broker.password,
+		virtual_host = Broker#broker.virtual_host,
+		port = Broker#broker.port,
+		host = Broker#broker.host,
+		channel_max = Broker#broker.max_channels,
+		frame_max = Broker#broker.max_frames,
+		heartbeat = Broker#broker.heartbeat,
 		connection_timeout = infinity,
-		ssl_options = SSL
+		ssl_options = Broker#broker.ssl_options
 	}.
 
 create_connection_for(Broker, State) ->
-	case is_process_alive(Broker#broker.connection) of
-		true -> {Broker#broker.connection, State};
-		_ ->
-			Connection = amqp_connection:start(to_connection(Broker)),
+	case amqp_connection:start(to_connection(Broker)) of
+		{ok, Connection} ->
 			NewBroker = Broker#broker{ connection = Connection },
-			Brokers = dict:store(Broker#broker.name, NewBroker, BrokerState#state.brokers,
-			{Connection, State#state{ brokers = Brokers } }
+			Brokers = dict:store(Broker#broker.name, NewBroker, State#state.brokers),
+			{Connection, State#state{ brokers = Brokers } };
+		_ -> {undefined, State}
 	end.
 
-get_connection(State) ->
+get_connection_for(Broker, State) ->
+	Alive = case is_pid(Broker#broker.connection) of
+		true -> is_process_alive(Broker#broker.connection);
+		_ -> false
+	end,
+	case Alive of
+		true -> {Broker#broker.connection, State};
+		_ -> create_connection_for(Broker, State)
+	end.
+
+get_connection(Broker, State) ->
 	Brokers = State#state.brokers,
-	BrokerList = dict:fetch_keys(Brokers),
-	%need to eventually put some 'real' logic here
-	[K1 | _ ] = BrokerList,
-	B = dict:fetch(K1, Brokers),
-	create_connection_for(B, State).
+	B = dict:fetch(Broker, Brokers),
+	get_connection_for(B, State).
 
-
-get_channel(Connection) ->
+create_channel(Connection) ->
 	case amqp_connection:open_channel(Connection) of
 		{ok, Channel} -> Channel;
 		_ -> undefined
 	end.
 
-get_channel_for(Key, State) ->
+add_channel(Broker, Key, State) ->
 	Channels = State#state.channels,
-	case dict:is_key(Key, Channels) ->
-		true -> {dict:fetch(Key, Channels), State};
-		_ ->
-			{Connection, State2} = get_connection(state),
-			Channel = get_channel(Connection),
-			State3 = State2#state{ channels = dict:append(Key, Channel, Channels)},
-			{Channel, State3}
-	end.
+	{Connection, State2} = get_connection(Broker, State),
+	Channel = create_channel(Connection),
+	State3 = State2#state{ channels = dict:store(Key, Channel, Channels)},
+	{Channel, State3}.
 
+get_channel_for(Key, State) ->
+	[Broker | _ ] = dict:fetch_keys(State#state.brokers),
+	get_channel_for(Broker, Key, State).
+
+get_channel_for(Broker, Key, State) ->
+	Channels = State#state.channels,
+	case dict:is_key(Key, Channels) of
+		true ->
+			StoredChannel = dict:fetch(Key, Channels),
+			case is_process_alive(StoredChannel) of
+				true -> {StoredChannel, State};
+				_ -> add_channel(Broker, Key, State)
+			end;
+		_ ->
+			add_channel(Broker, Key, State)		
+	end.
 

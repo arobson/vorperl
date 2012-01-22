@@ -6,11 +6,11 @@
 		messengerl_sup,
 		subscription_sup,
 		amqp,
-		amqp_util
+		amqp_util,
 		connection_pool,
 		queue_subscriber
 		]},
-	{registered, [amqp]},
+	{registered, [amqp, connection_pool, queue_subscriber]},
 	{applications, [
 		kernel,
 		stdlib,
