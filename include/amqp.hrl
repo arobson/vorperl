@@ -30,23 +30,4 @@
 	app_id,
 	cluster_id}).
 
--record(message_flags, {
-	id, 
-	correlation_id,
-	key= <<"">>,
-	content_type,
-	content_encoding,
-	headers,
-	persist=false,
-	mandatory=false, 
-	immediate=false,
-	reply_to=undefined,
-	expiration,
-	timestamp,
-	user_id,
-	app_id,
-	cluster_id,
-	priority}).
-
-
 %-record('P_basic', {content_type, content_encoding, headers, delivery_mode, priority, correlation_id, reply_to, expiration, message_id, timestamp, type, user_id, app_id, cluster_id}).

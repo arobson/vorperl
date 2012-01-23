@@ -10,8 +10,10 @@
 
 -export([ 
 			broker_to_bin/1,
+			exchange_declare/2,
 			prep_message/2,
-			parse_proplist/1,			
+			parse_proplist/1,
+			queue_declare/2,		
 			to_bin/1
 		]).
 
@@ -29,47 +31,73 @@ broker_to_bin(Broker=#broker{}) ->
 		virtual_host = to_bin(Broker#broker.virtual_host)
 	}.
 
-delivery_type(#message_flags{persist=Persist}) ->
-	case Persist of
+delivery_type(Props) ->
+	case parse_prop(persist, Props, false) of
 		true -> 2;
 		_ -> 1
 	end.
 
-prep_message(Exchange, X) ->
-	
-	Props = #'P_basic'{
-		content_type = to_bin(X#message_flags.content_type),
-		content_encoding = to_bin(X#message_flags.content_encoding),
-		correlation_id = to_bin(X#message_flags.correlation_id),
-		message_id = to_bin(X#message_flags.id),
-		headers = parse_dict(X#message_flags.headers),
-		delivery_mode = delivery_type(X),
-		reply_to = to_bin(X#message_flags.reply_to),
-		expiration = X#message_flags.expiration,
-		timestamp = X#message_flags.timestamp,
-		user_id = to_bin(X#message_flags.user_id),
-		app_id = to_bin(X#message_flags.app_id),
-		cluster_id = to_bin(X#message_flags.cluster_id),
-		priority = X#message_flags.priority
-	},
-
-	Publish = #'basic.publish'{ 
-		exchange = to_bin(Exchange),
-		mandatory = X#message_flags.mandatory,
-		immediate = X#message_flags.immediate,
-		routing_key = to_bin(X#message_flags.key)
-	},
-
-	{Props, Publish}.
+exchange_declare(Exchange, Config) ->
+	#'exchange.declare'{
+		exchange=Exchange,
+		type=parse_prop(type, Config, "direct"),
+		durable=parse_prop(durable, Config, false),
+		auto_delete=parse_prop(auto_delete, Config, false),
+		passive=parse_prop(passive, Config, false),
+		internal=parse_prop(internal, Config, false),
+		nowait=parse_prop(nowait, Config, false)
+	}.
 
 parse_dict(undefined) ->
 	undefined;
 parse_dict(D) ->
 	dict:from_list([ {X,to_bin(Y)} || {X,Y} <- dict:to_list(D) ]).
 
+parse_prop(Prop, Props) ->
+	parse_prop(Prop, Props, undefined).
+parse_prop(Prop, Props, Default) ->
+	to_bin(proplists:get_value(Prop, Props, Default)).
+
 parse_proplist(L) ->
 	Unfolded = proplists:unfold(L),
 	[{X, to_bin(Y)} || {X,Y} <- Unfolded].
+
+prep_message(Exchange, RoutingKey, Props) ->
+	
+	AmqpProps = #'P_basic'{
+		content_type = parse_prop(content_type, Props, "text/plain"),
+		content_encoding = parse_prop(content_encoding, Props),
+		correlation_id = parse_prop(correlation_id, Props),
+		message_id = parse_prop(id, Props),
+		headers = parse_dict(parse_prop(headers, Props)),
+		delivery_mode = delivery_type(Props),
+		reply_to = parse_prop(reply_to, Props),
+		expiration = parse_prop(expiration, Props),
+		timestamp = parse_prop(timestamp, Props),
+		user_id = parse_prop(user_id, Props),
+		app_id = parse_prop(app_id, Props),
+		cluster_id = parse_prop(cluster_id, Props),
+		priority = parse_prop(priority, Props)
+	},
+
+	Publish = #'basic.publish'{ 
+		exchange = to_bin(Exchange),
+		mandatory = parse_prop(mandatory, Props, false),
+		immediate = parse_prop(immediate, Props, false),
+		routing_key = to_bin(RoutingKey)
+	},
+
+	{AmqpProps, Publish}.
+
+queue_declare(Queue, Config) ->
+	#'queue.declare'{
+		queue=Queue,
+		exclusive=parse_prop(exclusive, Config, false),
+		durable=parse_prop(durable, Config, false),
+		auto_delete=parse_prop(auto_delete, Config, false),
+		passive=parse_prop(passive, Config, false),
+		nowait=parse_prop(nowait, Config, false)
+	}.
 
 to_bin(X) when is_list(X) ->
 	list_to_bitstring(X);

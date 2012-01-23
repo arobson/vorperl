@@ -17,7 +17,8 @@
 	queue/1,
 	queue/2,
 	send/2, 
-	send/3]).
+	send/3,
+	send/4]).
 
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -68,16 +69,27 @@ queue(Queue, Options) ->
 
 send(Exchange, Message) ->
 	send(
-		amqp_util:to_bin(Exchange), 
+		Exchange, 
 		Message, 
-		#message_flags{}
+		""
 	).
 
-send(Exchange, Message, Flags) ->
-	gen_server:cast(?SERVER, {send, 
+send(Exchange, Message, RoutingKey) ->
+	send(
+		Exchange, 
+		Message,
+		RoutingKey, 
+		[]
+	).
+
+send(Exchange, Message, RoutingKey, Properties) ->
+	gen_server:cast(?SERVER, {
+		send, 
 		amqp_util:to_bin(Exchange), 
-		Message, 
-		Flags}).
+		Message,
+		amqp_util:to_bin(RoutingKey), 
+		Flags
+	}).
 
 %%===================================================================
 %%% gen_server
@@ -116,8 +128,8 @@ handle_cast({bind, Source, Target, Topic}, State) ->
 		amqp_util:to_bin(Topic), 
 		State)};
 
-handle_cast({send, Exchange, MessageBody, Flags}, State) ->
-	{noreply, send_message(Exchange, MessageBody, Flags, State)};
+handle_cast({send, Exchange, MessageBody, RoutingKey, Props}, State) ->
+	{noreply, send_message(Exchange, MessageBody, RoutingKey, Props, State)};
 
 handle_cast(_Msg, State) ->
   {noreply, State}.
@@ -146,44 +158,28 @@ bind(Source, Target, RoutingKey, State) ->
 	State.
 
 declare_exchange(Exchange, Config, State) -> 
-	Declare = #'exchange.declare'{
-		exchange=Exchange,
-		type=proplists:get_value(type, Config, <<"direct">>),
-		durable=proplists:get_value(durable, Config, false),
-		auto_delete=proplists:get_value(auto_delete, Config, false),
-		passive=proplists:get_value(passive, Config, false),
-		internal=proplists:get_value(internal, Config, false),
-		nowait=proplists:get_value(nowait, Config, false)
-	},
+	Declare = amqp_util:declare_exchange(Exchange, Config),
 	Channel= connection_pool:get_channel(control),
 	amqp_channel:call(Channel, Declare),
 	State.
 
 declare_queue(Queue, Config, State) ->
-	Declare = #'queue.declare'{
-		queue=Queue,
-		exclusive=proplists:get_value(exclusive, Config, false),
-		durable=proplists:get_value(durable, Config, false),
-		auto_delete=proplists:get_value(auto_delete, Config, false),
-		passive=proplists:get_value(passive, Config, false),
-		nowait=proplists:get_value(nowait, Config, false)
-	},
+	Declare = amqp_util:declare_queue(Queue, Config),
 	Channel = connection_pool:get_channel(control),
 	amqp_channel:call(Channel, Declare),
-	io:format("Queue ~p declared~n", [Queue]),
 	% subscribe
 	QueueChannel= connection_pool:get_channel(Queue),
 	subscription_sup:start_subscription(Queue, State#state.router, QueueChannel),
 	
 	State.
 
-encode_message(_Flags, Msg) ->
+encode_message(Msg, _Flags) ->
 	amqp_util:to_bin(Msg).
 
-send_message(Exchange, Message, Flags, State) ->
+send_message(Exchange, Message, RoutingKey, Props, State) ->
 	Channel= connection_pool:get_channel(send),
-	Payload = encode_message(Flags, Message),
-	{Props, Publish} = amqp_util:prep_message(Exchange, Flags),
-	Envelope = #amqp_msg{props = Props, payload = Payload},
+	Payload = encode_message(Message, Props),
+	{AmqpProps, Publish} = amqp_util:prep_message(Exchange, RoutingKey, Props),
+	Envelope = #amqp_msg{props = AmqpProps, payload = Payload},
 	amqp_channel:cast(Channel, Publish, Envelope),
 	State.
