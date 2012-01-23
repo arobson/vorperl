@@ -62,13 +62,14 @@ prep_message(Exchange, X) ->
 
 	{Props, Publish}.
 
+parse_dict(undefined) ->
+	undefined;
 parse_dict(D) ->
 	dict:from_list([ {X,to_bin(Y)} || {X,Y} <- dict:to_list(D) ]).
 
 parse_proplist(L) ->
 	Unfolded = proplists:unfold(L),
-	Transformed = [{X, to_bin(Y)} || {X,Y} <- Unfolded].
-
+	[{X, to_bin(Y)} || {X,Y} <- Unfolded].
 
 to_bin(X) when is_list(X) ->
 	list_to_bitstring(X);

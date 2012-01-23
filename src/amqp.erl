@@ -137,10 +137,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%===================================================================
 
 bind(Source, Target, RoutingKey, State) ->
-	Channel= connection_pool:get_channel(control, State),
+	Channel= connection_pool:get_channel(control),
 	Binding = #'queue.bind'{
-		queue=Source, 
-		exchange=Target, 
+		queue=Target, 
+		exchange=Source, 
 		routing_key=RoutingKey},
 	amqp_channel:call(Channel, Binding),
 	State.

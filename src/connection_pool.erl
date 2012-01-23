@@ -116,8 +116,14 @@ get_connection_for(Broker, State) ->
 
 get_connection(Broker, State) ->
 	Brokers = State#state.brokers,
-	B = dict:fetch(Broker, Brokers),
-	get_connection_for(B, State).
+	case dict:is_key(Broker, Brokers) of
+		true ->
+			B = dict:fetch(Broker, Brokers),
+			get_connection_for(B, State);
+		_ ->
+			io:format("No broker named ~p was found. Boo.~n", [Broker]),
+			{undefined, State}
+	end.
 
 create_channel(Connection) ->
 	case amqp_connection:open_channel(Connection) of
