@@ -43,29 +43,15 @@ loop(State) ->
 		#'basic.cancel_ok'{} ->
 			gen_server:cast(?HOST, {subscription_stopped, State#state.tag}),
 			ok;
-		{#'basic.deliver'{
-				delivery_tag=Tag,
-				exchange=Exchange,
-				routing_key=Key
-			}, Content} ->
-				io:format("GOT ME A MESSAGE!~n"),
-				RouteTo = State#state.router,
-				Envelope = #envelope{
-					exchange=Exchange,
-					queue=State#state.queue,
-					key=Key,
-					body=Content,
-					ack=get_ack(Tag, State),
-					nack=get_nack(Tag, State)
-				},
-				case is_function(RouteTo, 1) of
-					true -> RouteTo(Envelope);
-					_ -> RouteTo ! Envelope
-				end,
-				loop(State)
+		{ Deliver, Msg } ->
+			RouteTo = State#state.router,
+			Envelope = amqp_util:prep_envelope( Deliver, Msg, State#state.queue, State#state.channel ),
+			case RouteTo of
+				X when is_function(X, 1) -> 
+					X(Envelope);
+				X when is_pid(X) -> 
+					X ! Envelope;
+				{M, F} -> apply(M, F, Envelope)
+			end,
+			loop(State)
 	end.
-
-get_ack(Tag, State) ->
-	fun() -> amqp_channel:cast(State#state.channel, #'basic.ack'{delivery_tag=Tag}) end.
-get_nack(Tag, State) ->
-	fun() -> amqp_channel:cast(State#state.channel, #'basic.nack'{delivery_tag=Tag}) end.

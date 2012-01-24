@@ -6,7 +6,7 @@
 %%% @license MIT
 %%% Created January 16, 2012 by Alex Robson
 
--module(messengerl_sup).
+-module(vorperl_sup).
 -behaviour(supervisor).
 -export([start_link/0, init/1]).
 
@@ -26,7 +26,7 @@ init([]) ->
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
 
-    Amqp = create_child_spec(amqp, worker, permanent, 2000, []),
+    Amqp = create_child_spec(vorperl, worker, permanent, 2000, []),
     Connections = create_child_spec(connection_pool, worker, permanent, 2000, []),
     Subscriptions =create_child_spec(subscription_sup, supervisor, permanent, 2000, []),
 

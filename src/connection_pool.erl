@@ -18,8 +18,6 @@
 
 -include("amqp.hrl").
 
--include("amqp_client.hrl").
-
 -record(state, {brokers=dict:new(), channels=dict:new()}).
 
 %%===================================================================
@@ -27,10 +25,10 @@
 %%===================================================================
 
 add_broker() ->
-	add_broker(#broker{}).
+	add_broker([]).
 
-add_broker(Broker=#broker{}) ->
-	gen_server:call(?SERVER, {broker, amqp_util:broker_to_bin(Broker)}).
+add_broker(Props) ->
+	gen_server:call(?SERVER, {broker, amqp_util:broker_declare(Props)}).
 
 get_channel(Key) ->
 	gen_server:call(?SERVER, {channel, Key}).
@@ -56,6 +54,7 @@ handle_call(state, _From, State) ->
  
 handle_call({broker, Broker}, _From, State) ->
 	{_, State2} = create_connection_for(Broker, State),
+	io:format("new state: ~p ~n", [State2]),
 	{reply, ok, State2};
 
 handle_call({channel, Key}, _From, State) ->
@@ -81,37 +80,36 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
-to_connection(Broker) ->
-	#amqp_params_network{
-		username = Broker#broker.user,
-		password = Broker#broker.password,
-		virtual_host = Broker#broker.virtual_host,
-		port = Broker#broker.port,
-		host = Broker#broker.host,
-		channel_max = Broker#broker.max_channels,
-		frame_max = Broker#broker.max_frames,
-		heartbeat = Broker#broker.heartbeat,
-		connection_timeout = infinity,
-		ssl_options = Broker#broker.ssl_options
-	}.
+add_channel(Broker, Key, State) ->
+	%io:format("Adding channel ~p for broker ~p ~n", [Key, Broker]),
+	Channels = State#state.channels,
+	{Connection, State2} = get_connection(Broker, State),
+	case create_channel(Connection) of
+		retry -> add_channel(Broker, Key, State);
+		Channel ->
+			State3 = State2#state{ channels = dict:store(Key, Channel, Channels)},
+			{Channel, State3}
+	end.
+
+create_channel(Connection) ->
+	case amqp_connection:open_channel(Connection) of
+		{ok, Channel} -> Channel;
+		closing -> retry;
+		_Err ->
+			%io:format("Error opening channel: ~p ~n", [Err]), 
+			undefined
+	end.
 
 create_connection_for(Broker, State) ->
-	case amqp_connection:start(to_connection(Broker)) of
+	io:format("Creating connection for broker ~p ~n", [Broker]), 
+	case amqp_connection:start(Broker#broker.params) of
 		{ok, Connection} ->
 			NewBroker = Broker#broker{ connection = Connection },
 			Brokers = dict:store(Broker#broker.name, NewBroker, State#state.brokers),
 			{Connection, State#state{ brokers = Brokers } };
-		_ -> {undefined, State}
-	end.
-
-get_connection_for(Broker, State) ->
-	Alive = case is_pid(Broker#broker.connection) of
-		true -> is_process_alive(Broker#broker.connection);
-		_ -> false
-	end,
-	case Alive of
-		true -> {Broker#broker.connection, State};
-		_ -> create_connection_for(Broker, State)
+		Err ->
+			io:format("Attempt to create connection failed :( ~p ~n", [Err]), 
+			{undefined, State}
 	end.
 
 get_connection(Broker, State) ->
@@ -121,37 +119,59 @@ get_connection(Broker, State) ->
 			B = dict:fetch(Broker, Brokers),
 			get_connection_for(B, State);
 		_ ->
-			io:format("No broker named ~p was found. Boo.~n", [Broker]),
+			%io:format("No broker named ~p was found. Boo.~n", [Broker]),
 			{undefined, State}
 	end.
-
-create_channel(Connection) ->
-	case amqp_connection:open_channel(Connection) of
-		{ok, Channel} -> Channel;
-		_ -> undefined
-	end.
-
-add_channel(Broker, Key, State) ->
-	Channels = State#state.channels,
-	{Connection, State2} = get_connection(Broker, State),
-	Channel = create_channel(Connection),
-	State3 = State2#state{ channels = dict:store(Key, Channel, Channels)},
-	{Channel, State3}.
 
 get_channel_for(Key, State) ->
 	[Broker | _ ] = dict:fetch_keys(State#state.brokers),
 	get_channel_for(Broker, Key, State).
 
 get_channel_for(Broker, Key, State) ->
+	%io:format("get channel for broker ~p and ~p ~n", [Broker, Key]),
 	Channels = State#state.channels,
-	case dict:is_key(Key, Channels) of
-		true ->
-			StoredChannel = dict:fetch(Key, Channels),
-			case is_process_alive(StoredChannel) of
-				true -> {StoredChannel, State};
-				_ -> add_channel(Broker, Key, State)
-			end;
-		_ ->
-			add_channel(Broker, Key, State)		
+	case valid_channel(Key, Channels) of
+		false -> add_channel(Broker, Key, State);
+		true -> {dict:fetch(Key, Channels), State}
 	end.
 
+get_connection_for(Broker, State) ->
+	Connection = Broker#broker.connection,
+	case valid_connection(Connection) of
+		true -> {Connection, State};
+		_ ->
+			%io:format("No connection for broker, attempting to create one.~n"), 
+			create_connection_for(Broker, State)
+	end.
+
+valid_channel(Key, Channels) ->
+	%io:format("validating channel for ~p ~n", [Key]),
+	case dict:is_key(Key, Channels) of
+		false ->
+			%io:format("no channel named ~p ~n", [Key]), 
+			false;
+		true ->
+			case dict:fetch(Key, Channels) of
+				Channel when is_pid(Channel) ->
+					Alive = is_process_alive(Channel),
+					%io:format("Channel ~p is ~p ~n", [Key, Alive]),
+					Alive;
+				_ -> 
+					%io:format("channel ~p is not a valid process ~n", [Key]),
+					false
+			end
+	end.
+
+valid_connection(Connection) ->
+	case is_pid(Connection) of
+		true -> 
+			case is_process_alive(Connection) of
+				true ->
+					case amqp_connection:info(Connection, [is_closing]) of
+						[{is_closing, true}] -> false;
+						_ -> true
+					end;
+				_ -> false
+			end;
+		_ -> false
+	end.

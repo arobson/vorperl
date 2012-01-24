@@ -1,21 +1,22 @@
-{application, messengerl, [
+{application, vorperl, [
 	{description, "RabbitMQ API"},
 	{vsn, "0.0.1"},
 	{modules, [
-		messengerl_app, 
-		messengerl_sup,
+		vorperl_app, 
+		vorperl_sup,
 		subscription_sup,
-		amqp,
+		vorperl,
 		amqp_util,
 		connection_pool,
 		queue_subscriber
 		]},
-	{registered, [amqp, connection_pool, queue_subscriber]},
+	{registered, [vorperl, connection_pool, queue_subscriber]},
 	{applications, [
 		kernel,
 		stdlib,
-		sasl
+		sasl,
+		lager
 	]},
-	{mod, {messengerl_app, []}},
+	{mod, {vorperl_app, []}},
 	{env, []}
 ]}.

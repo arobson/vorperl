@@ -9,9 +9,10 @@
 -module(amqp_util).
 
 -export([ 
-			broker_to_bin/1,
+			broker_declare/1,
 			exchange_declare/2,
-			prep_message/2,
+			prep_envelope/4,
+			prep_message/3,
 			parse_proplist/1,
 			queue_declare/2,		
 			to_bin/1
@@ -19,16 +20,26 @@
 
 -include("amqp.hrl").
 
--include("amqp_client.hrl").
-
-broker_to_bin(undefined) ->
-	undefined;
-broker_to_bin(Broker=#broker{}) ->
-	Broker#broker{
-		user = to_bin(Broker#broker.user),
-		password = to_bin(Broker#broker.password),
-		host = Broker#broker.host,
-		virtual_host = to_bin(Broker#broker.virtual_host)
+broker_declare(Props) ->
+	Default = #amqp_params_network{},
+	DefaultAuth = Default#amqp_params_network.auth_mechanisms,
+	#broker{
+		name = parse_prop(name, Props, "default"),
+		params = #amqp_params_network{
+			username=parse_prop(user, Props, "guest"),
+			password=parse_prop(password, Props, "guest"),
+			virtual_host=parse_prop(virtual_host, Props, "/"),
+			host=parse_prop(host, Props, "localhost"),
+			port=parse_prop(port, Props, 5672),
+			channel_max=parse_prop(channel_max, Props, 0),
+			frame_max=parse_prop(frame_max, Props, 0),
+			heartbeat=parse_prop(heartbeat, Props, 0),
+			connection_timeout=parse_prop(connection_timeout, Props, infinity),
+			ssl_options=parse_prop(ssl, Props, none),
+			auth_mechanisms=proplists:get_value(auth, Props, DefaultAuth),
+			client_properties=proplists:get_value(client, Props, []),
+			socket_options=proplists:get_value(socket, Props, [])
+		}
 	}.
 
 delivery_type(Props) ->
@@ -48,6 +59,11 @@ exchange_declare(Exchange, Config) ->
 		nowait=parse_prop(nowait, Config, false)
 	}.
 
+get_ack(Tag, Channel) ->
+	fun() -> amqp_channel:cast(Channel, #'basic.ack'{delivery_tag=Tag}) end.
+get_nack(Tag, Channel) ->
+	fun() -> amqp_channel:cast(Channel, #'basic.nack'{delivery_tag=Tag}) end.
+
 parse_dict(undefined) ->
 	undefined;
 parse_dict(D) ->
@@ -61,6 +77,36 @@ parse_prop(Prop, Props, Default) ->
 parse_proplist(L) ->
 	Unfolded = proplists:unfold(L),
 	[{X, to_bin(Y)} || {X,Y} <- Unfolded].
+
+prep_envelope(
+		#'basic.deliver'{
+				delivery_tag=Tag,
+				exchange=Exchange,
+				routing_key=Key
+		}, 
+		#amqp_msg{ payload=Payload, props=Props },
+		Queue,
+		Channel
+	) ->
+
+		#envelope{
+			exchange=Exchange,
+			queue=Queue,
+			key=Key,
+			body=Payload,
+			correlation_id=Props#'P_basic'.correlation_id,
+			content_type=Props#'P_basic'.content_type,
+			content_encoding=Props#'P_basic'.content_encoding,
+			type = Props#'P_basic'.type,
+			headers=Props#'P_basic'.headers,
+			id=Props#'P_basic'.message_id,
+			timestamp=Props#'P_basic'.timestamp,
+			user_id=Props#'P_basic'.user_id,
+			app_id=Props#'P_basic'.app_id,
+			cluster_id=Props#'P_basic'.cluster_id,
+			ack=get_ack(Tag, Channel),
+			nack=get_nack(Tag, Channel)
+		}.
 
 prep_message(Exchange, RoutingKey, Props) ->
 	
