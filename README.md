@@ -2,7 +2,7 @@
 
 RabbitMQ is amazing. I love it. I have a rabbit shaped hammer and everything looks like a carrot-nail. 
 
-Unfortunately the rabbit-erlang-client API is real world implementation of a jabberwocky. You're going need help to chop off its head. You need vorperl.
+Unfortunately the rabbit-erlang-client API is real world implementation of a jabberwocky and you need to tame it. You need vorperl.
 
 Vorperl is alpha. Please do not attempt to slay production jabberwockies at this time.
 
