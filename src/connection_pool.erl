@@ -54,7 +54,6 @@ handle_call(state, _From, State) ->
  
 handle_call({broker, Broker}, _From, State) ->
 	{_, State2} = create_connection_for(Broker, State),
-	io:format("new state: ~p ~n", [State2]),
 	{reply, ok, State2};
 
 handle_call({channel, Key}, _From, State) ->
@@ -81,7 +80,6 @@ code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
 add_channel(Broker, Key, State) ->
-	%io:format("Adding channel ~p for broker ~p ~n", [Key, Broker]),
 	Channels = State#state.channels,
 	{Connection, State2} = get_connection(Broker, State),
 	case create_channel(Connection) of
@@ -96,19 +94,16 @@ create_channel(Connection) ->
 		{ok, Channel} -> Channel;
 		closing -> retry;
 		_Err ->
-			%io:format("Error opening channel: ~p ~n", [Err]), 
 			undefined
 	end.
 
 create_connection_for(Broker, State) ->
-	io:format("Creating connection for broker ~p ~n", [Broker]), 
 	case amqp_connection:start(Broker#broker.params) of
 		{ok, Connection} ->
 			NewBroker = Broker#broker{ connection = Connection },
 			Brokers = dict:store(Broker#broker.name, NewBroker, State#state.brokers),
 			{Connection, State#state{ brokers = Brokers } };
-		Err ->
-			io:format("Attempt to create connection failed :( ~p ~n", [Err]), 
+		_Err ->
 			{undefined, State}
 	end.
 
@@ -118,8 +113,7 @@ get_connection(Broker, State) ->
 		true ->
 			B = dict:fetch(Broker, Brokers),
 			get_connection_for(B, State);
-		_ ->
-			%io:format("No broker named ~p was found. Boo.~n", [Broker]),
+		_Err ->
 			{undefined, State}
 	end.
 
@@ -128,7 +122,6 @@ get_channel_for(Key, State) ->
 	get_channel_for(Broker, Key, State).
 
 get_channel_for(Broker, Key, State) ->
-	%io:format("get channel for broker ~p and ~p ~n", [Broker, Key]),
 	Channels = State#state.channels,
 	case valid_channel(Key, Channels) of
 		false -> add_channel(Broker, Key, State);
@@ -140,24 +133,19 @@ get_connection_for(Broker, State) ->
 	case valid_connection(Connection) of
 		true -> {Connection, State};
 		_ ->
-			%io:format("No connection for broker, attempting to create one.~n"), 
 			create_connection_for(Broker, State)
 	end.
 
 valid_channel(Key, Channels) ->
-	%io:format("validating channel for ~p ~n", [Key]),
 	case dict:is_key(Key, Channels) of
-		false ->
-			%io:format("no channel named ~p ~n", [Key]), 
+		false -> 
 			false;
 		true ->
 			case dict:fetch(Key, Channels) of
 				Channel when is_pid(Channel) ->
 					Alive = is_process_alive(Channel),
-					%io:format("Channel ~p is ~p ~n", [Key, Alive]),
 					Alive;
 				_ -> 
-					%io:format("channel ~p is not a valid process ~n", [Key]),
 					false
 			end
 	end.

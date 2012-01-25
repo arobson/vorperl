@@ -18,9 +18,13 @@
 	exchange/2,
 	queue/1,
 	queue/2,
+	route_to/1,
 	send/2, 
 	send/3,
-	send/4]).
+	send/4,
+	subscribe_to/1,
+	topology/3
+	]).
 
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -30,9 +34,9 @@
 
 -record(state, {
 	router, 
-	subscriptions,
 	control_channel,
-	declarations = []}).
+	declarations = [],
+	subscriptions = dict:new()}).
 
 %%===================================================================
 %%% API
@@ -75,6 +79,12 @@ queue(Queue, Options) ->
 		Parsed
 	}).
 
+route_to(Router) ->
+	gen_server:cast(?SERVER, {
+		route,
+		Router
+	}).
+
 send(Exchange, Message) ->
 	send(
 		Exchange, 
@@ -99,6 +109,18 @@ send(Exchange, Message, RoutingKey, Properties) ->
 		Properties
 	}).
 
+subscribe_to(Queue) ->
+	gen_server:cast(?SERVER, {
+		subscribe,
+		amqp_util:to_bin(Queue)
+	}).
+
+topology(	{exchange, ExchangeName, ExchangeProps}, 
+			{queue, QueueName, QueueProps}, Topic) ->
+	exchange(ExchangeName, ExchangeProps),
+	queue(QueueName, QueueProps),
+	bind(ExchangeName, QueueName, Topic).
+
 %%===================================================================
 %%% gen_server
 %%===================================================================
@@ -122,12 +144,6 @@ handle_call(state, _From, State) ->
  
 handle_call(_Request, _From, State) ->
   {reply, ok, State}.
- 
-handle_cast({create_exchange, Exchange, ExchangeConfig}, State) ->
-  {noreply, declare_exchange(Exchange, ExchangeConfig, State)};
-
-handle_cast({create_queue, Queue, QueueConfig}, State) ->
-  {noreply, declare_queue(Queue, QueueConfig, State)};
 
 handle_cast({bind, Source, Target, Topic}, State) ->
 	{noreply, bind(
@@ -136,16 +152,56 @@ handle_cast({bind, Source, Target, Topic}, State) ->
 		amqp_util:to_bin(Topic), 
 		State)};
 
+handle_cast({create_exchange, Exchange, ExchangeConfig}, State) ->
+  {noreply, declare_exchange(Exchange, ExchangeConfig, State)};
+
+handle_cast({create_queue, Queue, QueueConfig}, State) ->
+  {noreply, declare_queue(Queue, QueueConfig, State)};
+
+handle_cast({new_subscription, Pid}, State) ->
+	Ref = monitor(process, Pid),
+	{noreply, State#state{
+		subscriptions = dict:store(Ref, Pid, State#state.subscriptions)
+	}};
+
+handle_cast({route, RouteTo}, State) ->
+	Subscriptions = State#state.subscriptions,
+	lists:foreach(
+		fun({_,V}) -> queue_subscriber:route_to(V, RouteTo) end,
+		dict:to_list(Subscriptions)
+	),
+	{noreply, State};
+
 handle_cast({send, Exchange, MessageBody, RoutingKey, Props}, State) ->
 	{noreply, send_message(Exchange, MessageBody, RoutingKey, Props, State)};
+
+handle_cast({subscribe, Queue}, State) ->
+	subscribe(Queue, State),
+	{noreply, State};
 
 handle_cast(_Msg, State) ->
   {noreply, State}.
 
-handle_info({'DOWN', _Ref, process, _Pid, _Info}, State) ->
-	Channel = connection_pool:get_channel(control),
-	replay_declarations(State#state.declarations, Channel, State),
-	{noreply, State#state{ control_channel = monitor(process, Channel) }};
+handle_info({'DOWN', Ref, process, _Pid, Info}, State) ->
+	Subscriptions = State#state.subscriptions,
+	case dict:is_key(Ref, Subscriptions) of
+		false ->
+			if 
+				Info =:= shutdown ->
+					io:format("Shutting down normally.~n"),
+					{noreply, State};
+				true ->
+					io:format("Control channel shutdown with ~p ~n", [Info]),
+					Channel = connection_pool:get_channel(control),
+					replay_declarations(State#state.declarations, Channel, State),
+					{noreply, State#state{ 
+						control_channel = monitor(process, Channel) }}
+			end;
+		true ->
+			{noreply, State#state{ subscriptions = 
+				dict:erase(Ref, Subscriptions)
+			}}
+	end;
 
 handle_info(_Info, State) ->
   {noreply, State}.
@@ -185,8 +241,10 @@ declare_queue(Queue, Config, State) ->
 	Channel = connection_pool:get_channel(control),
 	amqp_channel:call(Channel, Declare),
 	subscribe(Queue, State),
-	State2 = State#state{ declarations =
-		lists:append(State#state.declarations, [{queue, Queue, Declare}])},
+	State2 = State#state{ 
+		declarations = 
+			lists:append(State#state.declarations, [{queue, Queue, Declare}])},
+		
 	ensure_monitor(Channel, State2).
 
 encode_message(Msg, _Flags) ->

@@ -23,13 +23,11 @@
 broker_declare(Props) ->
 	Default = #amqp_params_network{},
 	DefaultAuth = Default#amqp_params_network.auth_mechanisms,
-	#broker{
-		name = parse_prop(name, Props, "default"),
-		params = #amqp_params_network{
+	Auth = #amqp_params_network{
 			username=parse_prop(user, Props, "guest"),
 			password=parse_prop(password, Props, "guest"),
 			virtual_host=parse_prop(virtual_host, Props, "/"),
-			host=parse_prop(host, Props, "localhost"),
+			host=proplists:get_value(host, Props, "localhost"),
 			port=parse_prop(port, Props, 5672),
 			channel_max=parse_prop(channel_max, Props, 0),
 			frame_max=parse_prop(frame_max, Props, 0),
@@ -39,7 +37,10 @@ broker_declare(Props) ->
 			auth_mechanisms=proplists:get_value(auth, Props, DefaultAuth),
 			client_properties=proplists:get_value(client, Props, []),
 			socket_options=proplists:get_value(socket, Props, [])
-		}
+		},
+	#broker{
+		name = parse_prop(name, Props, "default"),
+		params = Auth
 	}.
 
 delivery_type(Props) ->
