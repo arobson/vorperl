@@ -8,6 +8,10 @@
 
 -module(amqp_util).
 
+-ifdef(TEST).
+-compile(export_all).
+-endif.
+
 -export([ 
 			broker_declare/1,
 			exchange_declare/2,
@@ -148,7 +152,5 @@ queue_declare(Queue, Config) ->
 
 to_bin(X) when is_list(X) ->
 	list_to_bitstring(X);
-to_bin(X) when is_bitstring(X) ->
-	X;
 to_bin(X) ->
 	X.

@@ -1,5 +1,0 @@
-application:load(sasl).
-application:load(lager).
-application:start(sasl).
-application:start(lager).
-rr("include/amqp.hrl").
