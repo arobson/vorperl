@@ -2,9 +2,9 @@
 
 RabbitMQ is amazing. I love it. I have a rabbit shaped hammer and everything looks like a carrot-nail. 
 
-Unfortunately the rabbit-erlang-client API is real world implementation of a jabberwocky. You're going need help to chop off its head. You need vorperl.
+Unfortunately the rabbit-erlang-client API is real world implementation of a jabberwocky and you need to tame it. You need vorperl.
 
-Vorperl is alpha. Please do not attempt to slay production jabberwockies at this time.
+Vorperl is near beta (in that it supports a decent baseline functionality). Please do not attempt to slay production jabberwockies at this time.
 
 ## How To Use
 
@@ -78,7 +78,8 @@ You can create exchanges, queues and bindings as follows:
 		durable,
 		auto_delete,
 		passive,
-		nowait
+		nowait,
+		{route_to, Route} % Can be fun(X), Pid or {Module, Function}
 	]).
 
 	%% binding a queue to exchange
@@ -100,9 +101,9 @@ You can declare an exchange, a queue and bind them together all in one call
 	).
 
 ### Step 4 - Setting The Router
-The default message handler for all subscriptions is unhelpful and simply prints some nonsense and then acks the message. You can change this by providing your own fun/1, Pid or MFA signature.
+The default message handler for all subscriptions is unhelpful and simply prints the message and then acks it. You can change this by providing your own fun/1, Pid or MFA signature.
 
-Though it is likely to change, currently vorperl passes all messages from all queues to one router. There is no API to allow you to set this per queue (yet). This means you would need to add additional logic in whatever receives the message to route it.
+Currently, calling route_to resets the router for all active queues and changes the default.
 
 	vorperl:route_to(fun(X) -> io:format("this is a waste!~n") end).
 
@@ -161,13 +162,38 @@ vorperl wraps the message in a meta-data rich envelope. You'll need to include t
 	% these fields contain a fun/0 that will ack/nack this particular
 	% message on the broker
 
+### Feature - Subscribe to Queue
+Vorperl currently automatically subscribes to every queue you declare. For topologies where the queue is already declared or in cases where you may want to start/stop subscriptions, you can call one of the subscribe functions:
+
+	% subscribe to a queue
+	vorperl:subscribe_to("q1").
+
+	% subscribe to a queue and provide a custom route target
+	vorperl:subscribe_to("q1", Route). % fun(X), Pid or {M, F}
+
+## Feature -- Stop Subscription
+
+	% stop subscription
+	vorperl:stop_subscription("q1").
+
+## Feature -- Define Encoder / Decoder by Content Type
+RabbitMQ allows you to set a content type on messages which will be provided on incoming messages via the envelope record. Vorperl will attempt to encode and decode the message body based on built in or custom encoder / decoder functions.
+
+The built-in encoder / decoder pairs exist only for plain/text, application/x-erlang-binary and application/json.
+
+	% adding support for a new content-type
+	Encoder = fun(X) -> %do something and return binary result% end,
+	Decoder = fun(X) -> %decode binary to Erlang representation% end,
+	vorperl:content_type(<<"application/custom">>, Encoder, Decoder).
+
 ## Contributions
 It would be really cool to get suggestions or feature requests but it would be infinite orders of magnitude cooler to get pull requests.
 
 ## To Do
  *	Add Mocks and Unit Tests.
- *	Add content_type based message encoding / decoding
  *	Provide examples
+ *	Provide default / customizable message return handlers
+ *  Provide request / response support via envelope reply function
 
 ## License
 MIT

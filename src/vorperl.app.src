@@ -8,6 +8,7 @@
 		vorperl,
 		amqp_util,
 		connection_pool,
+		message_util,
 		queue_subscriber
 		]},
 	{registered, [vorperl, connection_pool, queue_subscriber]},

@@ -14,6 +14,7 @@
 	bind/3,
 	broker/0,
 	broker/1, 
+	content_provider/3,
 	exchange/1,
 	exchange/2,
 	queue/1,
@@ -22,7 +23,9 @@
 	send/2, 
 	send/3,
 	send/4,
+	stop_subscription/1,
 	subscribe_to/1,
+	subscribe_to/2,
 	topology/3
 	]).
 
@@ -35,7 +38,9 @@
 -record(state, {
 	router, 
 	control_channel,
+	content_providers = dict:new(),
 	declarations = [],
+	queues = dict:new(),
 	subscriptions = dict:new()}).
 
 %%===================================================================
@@ -54,6 +59,9 @@ broker() ->
 
 broker(Props) ->
 	connection_pool:add_broker(Props).
+
+content_provider( ContentType, Encoder, Decoder ) ->
+	gen_server:cast(?SERVER, {ContentType, Encoder, Decoder}).
 
 % default exchange
 exchange(Exchange) ->
@@ -109,14 +117,27 @@ send(Exchange, Message, RoutingKey, Properties) ->
 		Properties
 	}).
 
+stop_subscription(Queue) ->
+	gen_server:cast(?SERVER, {
+		stop_subscription,
+		amqp_util:to_bin(Queue)
+	}).
+
 subscribe_to(Queue) ->
 	gen_server:cast(?SERVER, {
 		subscribe,
 		amqp_util:to_bin(Queue)
 	}).
 
-topology(	{exchange, ExchangeName, ExchangeProps}, 
-			{queue, QueueName, QueueProps}, Topic) ->
+subscribe_to(Queue, RouteTo) ->
+	gen_server:cast(?SERVER, {
+		subscribe,
+		amqp_util:to_bin(Queue),
+		RouteTo
+	}).
+
+topology({exchange, ExchangeName, ExchangeProps}, 
+		 {queue, QueueName, QueueProps}, Topic) ->
 	exchange(ExchangeName, ExchangeProps),
 	queue(QueueName, QueueProps),
 	bind(ExchangeName, QueueName, Topic).
@@ -130,11 +151,14 @@ start_link() ->
 
 init([]) ->
 	Router = fun(X)-> 
-			io:format("acking message~n"),
+			io:format("Message: ~p ~n", [X#envelope.body]),
 			Ack = X#envelope.ack,
 			Ack()
 		end,
-	{ok, #state{router=Router}}.
+	{ok, #state{
+		router=Router,
+		content_providers=default_providers()
+	}}.
 
 handle_call(stop, _From, State) ->
   {stop, normal, stopped, State};
@@ -152,31 +176,57 @@ handle_cast({bind, Source, Target, Topic}, State) ->
 		amqp_util:to_bin(Topic), 
 		State)};
 
+handle_cast({content_provider, ContentType, Encode, Decode}, State) ->
+	Queues = State#state.queues,
+	lists:foreach(
+		fun({_,V}) -> queue_subscriber:content_provider(V, ContentType, Encode, Decode) end,
+		dict:to_list(Queues)
+	),
+	{noreply, State#state{ content_providers = 
+		dict:store(ContentType, {Encode, Decode}, State#state.content_providers)
+	}};
+
 handle_cast({create_exchange, Exchange, ExchangeConfig}, State) ->
   {noreply, declare_exchange(Exchange, ExchangeConfig, State)};
 
 handle_cast({create_queue, Queue, QueueConfig}, State) ->
   {noreply, declare_queue(Queue, QueueConfig, State)};
 
-handle_cast({new_subscription, Pid}, State) ->
+handle_cast({new_subscription, Queue, Pid}, State) ->
 	Ref = monitor(process, Pid),
 	{noreply, State#state{
-		subscriptions = dict:store(Ref, Pid, State#state.subscriptions)
+		queues = dict:store(Queue, Pid, State#state.queues),
+		subscriptions = dict:store(Ref, Queue, State#state.subscriptions)
 	}};
 
 handle_cast({route, RouteTo}, State) ->
-	Subscriptions = State#state.subscriptions,
+	Queues = State#state.queues,
 	lists:foreach(
 		fun({_,V}) -> queue_subscriber:route_to(V, RouteTo) end,
-		dict:to_list(Subscriptions)
+		dict:to_list(Queues)
 	),
 	{noreply, State};
 
 handle_cast({send, Exchange, MessageBody, RoutingKey, Props}, State) ->
 	{noreply, send_message(Exchange, MessageBody, RoutingKey, Props, State)};
 
+handle_cast({stop_subscription, Queue}, State) ->
+	Queues = State#state.queues,
+	case dict:is_key(Queue, Queues) of
+		true ->
+			Pid = dict:fetch(Queue, Queues),
+			NewQueues = dict:erase(Queue, Queues),
+			queue_subscriber:stop(Pid),
+			{noreply, State#state{ queues = NewQueues }};
+		_ -> {noreply, State}
+	end;
+
 handle_cast({subscribe, Queue}, State) ->
-	subscribe(Queue, State),
+	subscribe(Queue, State#state.router, State),
+	{noreply, State};
+
+handle_cast({subscribe, Queue, RouteTo}, State) ->
+	subscribe(Queue, RouteTo, State),
 	{noreply, State};
 
 handle_cast(_Msg, State) ->
@@ -198,8 +248,16 @@ handle_info({'DOWN', Ref, process, _Pid, Info}, State) ->
 						control_channel = monitor(process, Channel) }}
 			end;
 		true ->
-			{noreply, State#state{ subscriptions = 
-				dict:erase(Ref, Subscriptions)
+			Queue = dict:fetch(Ref, Subscriptions),
+			Queues = State#state.queues,
+			NewQueues = 
+				case dict:is_key(Queue, Queues) of
+					true -> dict:erase(Queue, Queues);
+					false -> Queues
+				end,
+			{noreply, State#state{ 
+				subscriptions = dict:erase(Ref, Subscriptions),
+				queues = NewQueues
 			}}
 	end;
 
@@ -239,16 +297,40 @@ declare_exchange(Exchange, Config, State) ->
 declare_queue(Queue, Config, State) ->
 	Declare = amqp_util:queue_declare(Queue, Config),
 	Channel = connection_pool:get_channel(control),
+	Router = proplists:get_value(route_to, Config, State#state.router),
 	amqp_channel:call(Channel, Declare),
-	subscribe(Queue, State),
+	subscribe(Queue, Router, State),
 	State2 = State#state{ 
 		declarations = 
-			lists:append(State#state.declarations, [{queue, Queue, Declare}])},
+			lists:append(State#state.declarations, [{queue, Queue, Declare, Router}])},
 		
 	ensure_monitor(Channel, State2).
 
-encode_message(Msg, _Flags) ->
-	amqp_util:to_bin(Msg).
+default_providers() ->
+	Json_Coders = { 
+		fun(X) -> message_util:json_encode(X) end,
+		fun(X) -> message_util:json_decode(X) end 
+	},
+	Bert_Coders = {
+		fun(X) -> message_util:bert_encode(X) end,
+		fun(X) -> message_util:bert_decode(X) end 			
+	},
+	dict:from_list([
+		{"application/json", Json_Coders },
+		{<<"application/json">>, Json_Coders },
+		{"application/x-erlang-binary", Bert_Coders },
+		{<<"application/x-erlang-binary">>, Bert_Coders }
+	]).
+
+encode_message(Msg, Flags, State) ->
+	Providers = State#state.content_providers,
+	ContentType = proplists:get_value(content_type, Flags, <<"plain/text">>),
+	case dict:is_key(ContentType, State#state.content_providers) of
+		true -> 
+			{Encoder, _} = dict:fetch( ContentType, Providers ),
+			Encoder(Msg);
+		_ -> amqp_util:to_bin(Msg)
+	end.
 
 ensure_monitor(Channel, State) ->
 	State#state{ control_channel = 
@@ -263,21 +345,25 @@ replay_declarations([D|T], Channel, State) ->
 	replay_declarations(D, Channel, State),
 	replay_declarations(T, Channel, State);
 
-replay_declarations({queue, Queue, Declaration}, Channel, State) ->
+replay_declarations({queue, Queue, Declaration, Router}, Channel, State) ->
 	amqp_channel:call(Channel, Declaration),
-	subscribe(Queue, State);
+	subscribe(Queue, Router, State);
 
 replay_declarations({_Type, Declaration}, Channel, _State) ->
 	amqp_channel:call(Channel, Declaration).
 
 send_message(Exchange, Message, RoutingKey, Props, State) ->
 	Channel= connection_pool:get_channel(send),
-	Payload = encode_message(Message, Props),
+	Payload = encode_message(Message, Props, State),
 	{AmqpProps, Publish} = amqp_util:prep_message(Exchange, RoutingKey, Props),
 	Envelope = #amqp_msg{props = AmqpProps, payload = Payload},
 	amqp_channel:cast(Channel, Publish, Envelope),
 	State.
 
-subscribe(Queue, State) ->
+subscribe(Queue, Router, State) ->
 	QueueChannel = connection_pool:get_channel(Queue),
-	subscription_sup:start_subscription(Queue, State#state.router, QueueChannel).
+	subscription_sup:start_subscription(
+		Queue, 
+		Router, 
+		QueueChannel, 
+		State#state.content_providers).

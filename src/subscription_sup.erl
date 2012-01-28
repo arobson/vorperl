@@ -8,7 +8,7 @@
 
 -module(subscription_sup).
 -behaviour(supervisor).
--export([start_link/0, init/1, start_subscription/3]).
+-export([start_link/0, init/1, start_subscription/4]).
 
 -define(SERVER, ?MODULE).
 
@@ -19,8 +19,8 @@
 start_link() ->
 	supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-start_subscription(Queue, RouteTo, Channel) ->
-	supervisor:start_child(?SERVER, [Queue, RouteTo, Channel]).
+start_subscription(Queue, RouteTo, Channel, Providers) ->
+	supervisor:start_child(?SERVER, [Queue, RouteTo, Channel, Providers]).
 
 init([]) ->
 	RestartStrategy = simple_one_for_one,
