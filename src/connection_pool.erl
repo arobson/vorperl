@@ -1,5 +1,5 @@
 %%% @author Alex Robson
-%%% @copyright Alex Robson, 2012
+%%% @copyright appendTo, 2012
 %%% @doc
 %%%
 %%% @end
@@ -18,7 +18,7 @@
 
 -include("amqp.hrl").
 
--record(state, {brokers=dict:new(), channels=dict:new()}).
+-record(state, {return_handler, brokers=dict:new(), channels=dict:new()}).
 
 %%===================================================================
 %%% API
@@ -44,7 +44,9 @@ start_link() ->
 	gen_server:start_link({local,?SERVER}, ?MODULE, [], []).
 
 init([]) ->
-	{ok, #state{}}.
+	{ok, #state{
+		return_handler = fun default_return_handler/2
+	}}.
 
 handle_call(stop, _From, State) ->
   {stop, normal, stopped, State};
@@ -67,9 +69,24 @@ handle_call({channel, Broker, Key}, _From, State) ->
 handle_call(_Request, _From, State) ->
   {reply, ok, State}.
  
+handle_cast({on_return, Handler}, State) ->
+	{noreply, State#state{return_handler=Handler}};
+
 handle_cast(_Msg, State) ->
   {noreply, State}.
- 
+
+handle_info({BasicReturn, Content}, State) ->
+	Reason = BasicReturn#'basic.return'.reply_text,
+	ReturnEnvelope = amqp_util:prep_return(BasicReturn, Content),
+	case State#state.return_handler of
+		Handler when is_function(Handler, 2) -> 
+			Handler(Reason, ReturnEnvelope);
+		Handler when is_pid(Handler) -> 
+			Handler ! {on_return, Reason, ReturnEnvelope};
+		{M, F} -> apply(M, F, [Reason, ReturnEnvelope])
+	end,
+	{noreply, State};
+
 handle_info(_Info, State) ->
   {noreply, State}.
  
@@ -78,6 +95,10 @@ terminate(_Reason, _State) ->
  
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
+
+%%===================================================================
+%%% Internal
+%%===================================================================
 
 add_channel(Broker, Key, State) ->
 	Channels = State#state.channels,
@@ -91,7 +112,9 @@ add_channel(Broker, Key, State) ->
 
 create_channel(Connection) ->
 	case amqp_connection:open_channel(Connection) of
-		{ok, Channel} -> Channel;
+		{ok, Channel} -> 
+			amqp_channel:register_return_handler(Channel, self()),
+			Channel;
 		closing -> retry;
 		_Err ->
 			undefined
@@ -106,6 +129,9 @@ create_connection_for(Broker, State) ->
 		_Err ->
 			{undefined, State}
 	end.
+
+default_return_handler(Reason, ReturnEnvelope) ->
+	io:format("Message returned because ~p. Envelope: ~p~n", [Reason, ReturnEnvelope]).
 
 get_connection(Broker, State) ->
 	Brokers = State#state.brokers,
@@ -137,29 +163,25 @@ get_connection_for(Broker, State) ->
 	end.
 
 valid_channel(Key, Channels) ->
-	case dict:is_key(Key, Channels) of
-		false -> 
-			false;
-		true ->
+	IsKey = dict:is_key(Key, Channels),
+	if 
+		IsKey ->
 			case dict:fetch(Key, Channels) of
 				Channel when is_pid(Channel) ->
 					Alive = is_process_alive(Channel),
 					Alive;
-				_ -> 
-					false
-			end
+				_ -> false
+			end;
+		true -> false
 	end.
 
 valid_connection(Connection) ->
-	case is_pid(Connection) of
-		true -> 
-			case is_process_alive(Connection) of
-				true ->
-					case amqp_connection:info(Connection, [is_closing]) of
-						[{is_closing, true}] -> false;
-						_ -> true
-					end;
-				_ -> false
+	IsValid = is_pid(Connection) andalso is_process_alive(Connection),
+	if 
+		IsValid ->
+			case amqp_connection:info(Connection, [is_closing]) of
+				[{is_closing, true}] -> false;
+				_ -> true
 			end;
-		_ -> false
+		true -> false
 	end.

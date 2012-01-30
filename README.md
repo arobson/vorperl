@@ -192,11 +192,13 @@ It would be really cool to get suggestions or feature requests but it would be i
 ## To Do
  *	Add Mocks and Unit Tests.
  *	Provide examples
- *	Provide default / customizable message return handlers
- *  Provide request / response support via envelope reply function
+ *  Provide callback/proccess for response handling
+ *  Provide event handler to publish messages to an exchange
+
+
 
 ## License
-MIT
+MIT / GPL
 
 ## Disclaimer
 

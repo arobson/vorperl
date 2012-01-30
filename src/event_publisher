@@ -1,0 +1,76 @@
+%%% @author Alex Robson
+%%% @copyright appendTo, 2012
+%%% @doc
+%%%
+%%% @end
+%%% @license MIT
+%%% Created January 16, 2012 by Alex Robson
+
+-module(event_publisher).
+
+-behaviour(gen_event).
+
+%% API
+-export([create/4]).
+
+%% gen_event callbacks
+-export([init/1, handle_event/2, handle_call/2, 
+         handle_info/2, terminate/2, code_change/3]).
+
+-define(SERVER, ?MODULE).
+
+-record(state, {parent, exchange, populators = [], properties}).
+
+%%%===================================================================
+%%% gen_event callbacks
+%%%===================================================================
+
+create(Parent, Exchange, Propulator, DefaultProperties) ->
+    gen_event:add_handler(Parent, )
+
+init([Parent, Exchange, Propulator, DefaultProperties]) ->
+    {ok, #state{
+        parent = Parent,
+        exchange = Exchange,
+        populators = lists:append([], Propulator),
+        properties = DefaultProperties
+    }}.
+
+handle_event(Event, State) ->
+    
+    {ok, State};
+
+handle_call(_Request, State) ->
+    Reply = ok,
+    {ok, Reply, State}.
+
+handle_info({add_message_parser, Parser}, State) ->
+    Current = State#state.populators,
+    {ok, State#state{populators = [Parser|Current]}};
+
+hande_info({set_defaults, Properties}, State) ->
+    {ok, State#state{properties = Properties}}.
+
+handle_info(_Info, State) ->
+    {ok, State}.
+
+terminate(_Reason, State) ->
+    gen_event:remove_handler(State#state.parent, ?MODULE, []),
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+build_property_list_from_event(Event, State) ->
+    Populators = State#state.populators,
+    Defaults = State#state.properties,
+    Transform = fun( F, L ) ->
+        lists:append(L, F(Event))
+    end,
+    NewProperties = lists:foldr(Transform, [], Populators),
+    lists:append(NewProperties, Defaults).
+

@@ -20,6 +20,7 @@
 	ack, 
 	nack, 
 	reply,
+	reply_to,
 	timestamp,
 	user_id,
 	app_id,

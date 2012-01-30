@@ -1,5 +1,5 @@
 %%% @author Alex Robson
-%%% @copyright Alex Robson, 2012
+%%% @copyright appendTo, 2012
 %%% @doc
 %%%
 %%% @end
@@ -26,7 +26,7 @@ init([]) ->
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
 
-    Amqp = create_child_spec(vorperl, worker, permanent, 2000, []),
+    Amqp = create_child_spec(vorperl_server, worker, permanent, 2000, []),
     Connections = create_child_spec(connection_pool, worker, permanent, 2000, []),
     Subscriptions =create_child_spec(subscription_sup, supervisor, permanent, 2000, []),
 

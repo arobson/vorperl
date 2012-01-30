@@ -1,5 +1,5 @@
 %%% @author Alex Robson
-%%% @copyright Alex Robson, 2012
+%%% @copyright appendTo, 2012
 %%% @doc
 %%%
 %%% @end
@@ -35,7 +35,7 @@ init(Queue, RouteTo, Channel, Providers) ->
 	Sub = #'basic.consume'{queue=Queue},
 	#'basic.consume_ok'{consumer_tag = Tag} = 
 		amqp_channel:call(Channel, Sub),
-	gen_server:cast(vorperl, {new_subscription, Queue, self()}),
+	gen_server:cast(vorperl_server, {new_subscription, Queue, self()}),
 	loop(#state{
 		queue=Queue, 
 		router=RouteTo, 

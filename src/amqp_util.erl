@@ -1,5 +1,5 @@
 %%% @author Alex Robson
-%%% @copyright Alex Robson, 2012
+%%% @copyright appendTo, 2012
 %%% @doc
 %%%
 %%% @end
@@ -13,9 +13,11 @@
 			exchange_declare/2,
 			prep_envelope/4,
 			prep_message/3,
+			prep_return/2,
 			parse_proplist/1,
 			queue_declare/2,		
-			to_bin/1
+			to_bin/1,
+			to_bitstring/1
 		]).
 
 -include("amqp.hrl").
@@ -64,6 +66,26 @@ get_ack(Tag, Channel) ->
 	fun() -> amqp_channel:cast(Channel, #'basic.ack'{delivery_tag=Tag}) end.
 get_nack(Tag, Channel) ->
 	fun() -> amqp_channel:cast(Channel, #'basic.nack'{delivery_tag=Tag}) end.
+get_reply(Envelope) ->
+	ReplyExchange = Envelope#envelope.reply_to,
+	Correlation = Envelope#envelope.correlation_id,
+	ContentType = Envelope#envelope.content_type,
+	Application = Envelope#envelope.app_id,
+	Cluster = Envelope#envelope.cluster_id,
+	User = Envelope#envelope.user_id,
+
+	Incoming = [
+		{correlation_id, Correlation},
+		{content_type, ContentType},
+		{app_id, Application},
+		{cluster_id, Cluster},
+		{user_id, User}
+	],
+
+	fun(Msg, Key, Props) ->
+		CombinedProps = lists:append(Props, Incoming),
+		vorperl:send(ReplyExchange, Msg, Key, CombinedProps)
+	end.
 
 parse_dict(undefined) ->
 	undefined;
@@ -77,7 +99,7 @@ parse_prop(Prop, Props, Default) ->
 
 parse_proplist(L) ->
 	Unfolded = proplists:unfold(L),
-	[{X, to_bin(Y)} || {X,Y} <- Unfolded].
+	[{X, to_bitstring(Y)} || {X,Y} <- Unfolded].
 
 prep_envelope(
 		#'basic.deliver'{
@@ -90,7 +112,7 @@ prep_envelope(
 		Channel
 	) ->
 
-		#envelope{
+		Envelope = #envelope{
 			exchange=Exchange,
 			queue=Queue,
 			key=Key,
@@ -105,14 +127,41 @@ prep_envelope(
 			user_id=Props#'P_basic'.user_id,
 			app_id=Props#'P_basic'.app_id,
 			cluster_id=Props#'P_basic'.cluster_id,
+			reply_to=Props#'P_basic'.reply_to,
 			ack=get_ack(Tag, Channel),
 			nack=get_nack(Tag, Channel)
+		},
+
+		Envelope#envelope{ reply=get_reply(Envelope)}.
+
+prep_return(
+		#'basic.return'{
+				exchange=Exchange,
+				routing_key=Key
+		}, 
+		#amqp_msg{ payload=Payload, props=Props }
+	) ->
+
+		#envelope{
+			exchange=Exchange,
+			key=Key,
+			body=Payload,
+			correlation_id=Props#'P_basic'.correlation_id,
+			content_type=Props#'P_basic'.content_type,
+			content_encoding=Props#'P_basic'.content_encoding,
+			type = Props#'P_basic'.type,
+			headers=Props#'P_basic'.headers,
+			id=Props#'P_basic'.message_id,
+			timestamp=Props#'P_basic'.timestamp,
+			user_id=Props#'P_basic'.user_id,
+			app_id=Props#'P_basic'.app_id,
+			cluster_id=Props#'P_basic'.cluster_id
 		}.
 
 prep_message(Exchange, RoutingKey, Props) ->
 	
 	AmqpProps = #'P_basic'{
-		content_type = parse_prop(content_type, Props, "text/plain"),
+		content_type = parse_prop(content_type, Props, <<"text/plain">>),
 		content_encoding = parse_prop(content_encoding, Props),
 		correlation_id = parse_prop(correlation_id, Props),
 		message_id = parse_prop(id, Props),
@@ -128,10 +177,10 @@ prep_message(Exchange, RoutingKey, Props) ->
 	},
 
 	Publish = #'basic.publish'{ 
-		exchange = to_bin(Exchange),
+		exchange = to_bitstring(Exchange),
 		mandatory = parse_prop(mandatory, Props, false),
 		immediate = parse_prop(immediate, Props, false),
-		routing_key = to_bin(RoutingKey)
+		routing_key = to_bitstring(RoutingKey)
 	},
 
 	{AmqpProps, Publish}.
@@ -146,9 +195,21 @@ queue_declare(Queue, Config) ->
 		nowait=parse_prop(nowait, Config, false)
 	}.
 
+to_bitstring([{X,Y}|T]) -> 
+	H = {to_bitstring(X), to_bitstring(Y)},
+	case T of
+		[] -> [H];
+		_ -> lists:append([H], to_bitstring(T))
+	end;
+to_bitstring(X) when is_bitstring(X) -> X;
+to_bitstring([]) -> <<"">>;
+to_bitstring(X) when is_list(X) ->
+	list_to_bitstring(X);
+to_bitstring(X) -> X.
+
+to_bin([{X,Y}|T]) ->
+	lists:append([{to_bin(X), to_bin(Y)}], to_bin(T));
 to_bin(X) when is_list(X) ->
 	list_to_bitstring(X);
-to_bin(X) when is_bitstring(X) ->
-	X;
-to_bin(X) ->
-	X.
+to_bin(X) -> X.
+
