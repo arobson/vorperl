@@ -186,6 +186,10 @@ The built-in encoder / decoder pairs exist only for plain/text, application/x-er
 	Decoder = fun(X) -> %decode binary to Erlang representation% end,
 	vorperl:content_type(<<"application/custom">>, Encoder, Decoder).
 
+## Contributors
+
+Thanks to OJ Reeves for cleaning up several --bonehead mistakes-- issues, adding Make support and a few additions to make using/hacking on this project tolerable!
+
 ## Contributions
 It would be really cool to get suggestions or feature requests but it would be infinite orders of magnitude cooler to get pull requests.
 
@@ -193,9 +197,6 @@ It would be really cool to get suggestions or feature requests but it would be i
  *	Add Mocks and Unit Tests.
  *	Provide examples
  *  Provide callback/proccess for response handling
- *  Provide event handler to publish messages to an exchange
-
-
 
 ## License
 MIT / GPL
