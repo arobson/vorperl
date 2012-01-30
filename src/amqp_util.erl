@@ -8,6 +8,10 @@
 
 -module(amqp_util).
 
+-ifdef(TEST).
+-compile(export_all).
+-endif.
+
 -export([ 
 			broker_declare/1,
 			exchange_declare/2,
@@ -211,5 +215,7 @@ to_bin([{X,Y}|T]) ->
 	lists:append([{to_bin(X), to_bin(Y)}], to_bin(T));
 to_bin(X) when is_list(X) ->
 	list_to_bitstring(X);
-to_bin(X) -> X.
-
+to_bin(X) when is_bitstring(X) ->
+	X;
+to_bin(X) ->
+	X.

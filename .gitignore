@@ -1,3 +1,7 @@
 deps
 ebin
 log
+*.swp
+.*.swp
+erl_crash.dump
+.eunit

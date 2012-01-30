@@ -111,7 +111,7 @@ handle( _Whatever, State ) ->
 loop(State) ->
 	receive
 		Message -> 
-			case apply(fun handle/2, [Message, State]) of
+			case handle(Message, State) of
 				{ok, NewState} -> loop(NewState);
 				stop -> ok
 			end
