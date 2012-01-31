@@ -22,6 +22,7 @@
 	send/2, 
 	send/3,
 	send/4,
+	start/0,
 	stop_subscription/1,
 	subscribe_to/1,
 	subscribe_to/2,
@@ -107,6 +108,9 @@ send(Exchange, Message, RoutingKey, Properties) ->
 		RoutingKey, 
 		Properties
 	}).
+
+start() ->
+	application:start(vorperl).
 
 stop_subscription(Queue) ->
 	gen_server:cast(?SERVER, {

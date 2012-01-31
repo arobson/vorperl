@@ -24,9 +24,11 @@ It also needs to have started before your code calls it. Do this by listing it i
 		vorperl % See? Simple-ish
 	]}
 
-## Examples
+## Building / Dev environment
 
-For now, these examples assume you're playing from the shell. If you want an easy way to do that, pull the repo down, run rebar compile and then run dev_start.sh.
+Thanks to OJ, vorperl is both rebar and make friendly. Pull the source down run make and you can start testing it in the shell with make start.
+
+OJ has reloader running by default and if you happen to have @rustyio's sync installed (http://github.com/rustyio/sync) in your $ERL_LIBS path, then it will use sync instead. Either way, it feels like winning.
 
 ### Step 1 - Connect to a broker
 You always have to do this first. If you don't you'll get a lovely crash dump. I'll improve that one day, but for now, how 'bout just remember you have to connect first.
@@ -186,9 +188,18 @@ The built-in encoder / decoder pairs exist only for plain/text, application/x-er
 	Decoder = fun(X) -> %decode binary to Erlang representation% end,
 	vorperl:content_type(<<"application/custom">>, Encoder, Decoder).
 
+## Feature -- Default / Custom Return Handler
+When a message is marked as mandatory and no queue is bound to the exchange OR if a message is marked immediate and there is no consumer pulling messages from the queue, then the RabbitMQ broker will send your client a return of the undeliverable message.
+
+By default, vorperl just prints this to the console. Helpful? Not really. But you can change that by using the following call:
+
+	vorperl:on_return(Handler).
+
+Where handler is a Pid, fun/2 or {M,F} signature. If you provide a Pid, you get a {on_return, Reason, ReturnedMessage} message to receive. Otherwise the fun or function provided will be called with Reason and ReturnedMessage where ReturnedMessage is the #envelope record explained before.
+
 ## Contributors
 
-Thanks to OJ Reeves for cleaning up several --bonehead mistakes-- issues, adding Make support and a few additions to make using/hacking on this project tolerable!
+Thanks to OJ Reeves for cleaning up several issues, adding Make support and a few additions to make using/hacking on this project friendlier!
 
 ## Contributions
 It would be really cool to get suggestions or feature requests but it would be infinite orders of magnitude cooler to get pull requests.

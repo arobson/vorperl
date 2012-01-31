@@ -11,7 +11,7 @@
 		message_util,
 		queue_subscriber
 		]},
-	{registered, [vorperl, connection_pool, queue_subscriber]},
+	{registered, [vorperl_server, connection_pool, queue_subscriber]},
 	{applications, [
 		kernel,
 		stdlib,

@@ -1,4 +1,5 @@
-REBAR=`which rebar || ./rebar`
+REBAR=`which rebar || ./rebar
+SYNC_PATH = $(ERL_LIBS)/sync
 
 all: deps compile
 
@@ -21,4 +22,7 @@ test: app
 		@$(REBAR) eunit skip_deps=true
 
 start:
-		exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin -boot start_sasl -s reloader -s lager -run connection_pool start_link -run vorperl start_link
+		if test -d $(SYNC_PATH); \
+		then exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin -boot start_sasl -s sync -s lager -run vorperl; \
+		else exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin -boot start_sasl -s reloader -s lager -run vorperl; \
+		fi
