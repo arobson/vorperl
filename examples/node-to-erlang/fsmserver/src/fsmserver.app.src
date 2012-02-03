@@ -1,0 +1,20 @@
+{application, fsmserver,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {modules, [
+  	server_app,
+  	server_sup,
+  	router
+  	]},
+  {registered, [router]},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  sasl,
+                  lager,
+                  vorperl
+                 ]},
+  {mod, { server_app, []}},
+  {env, []}
+ ]}.

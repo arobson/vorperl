@@ -1,4 +1,4 @@
-REBAR=`which rebar || ./rebar
+REBAR=$(shell which rebar || ./rebar)
 SYNC_PATH = $(ERL_LIBS)/sync
 
 all: deps compile

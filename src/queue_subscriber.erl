@@ -10,8 +10,6 @@
 
 -export([start_link/4, init/4, content_provider/4, route_to/2, stop/1]).
 
--include("amqp_client.hrl").
-
 -include("amqp.hrl").
 
 -define(HOST, amqp).

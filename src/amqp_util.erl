@@ -19,6 +19,7 @@
 			prep_message/3,
 			prep_return/2,
 			parse_proplist/1,
+			proplist_to_table/1,
 			queue_declare/2,		
 			to_bin/1,
 			to_bitstring/1
@@ -68,8 +69,10 @@ exchange_declare(Exchange, Config) ->
 
 get_ack(Tag, Channel) ->
 	fun() -> amqp_channel:cast(Channel, #'basic.ack'{delivery_tag=Tag}) end.
+	
 get_nack(Tag, Channel) ->
 	fun() -> amqp_channel:cast(Channel, #'basic.nack'{delivery_tag=Tag}) end.
+
 get_reply(Envelope) ->
 	ReplyExchange = Envelope#envelope.reply_to,
 	Correlation = Envelope#envelope.correlation_id,
@@ -101,6 +104,7 @@ parse_prop(Prop, Props) ->
 parse_prop(Prop, Props, Default) ->
 	to_bin(proplists:get_value(Prop, Props, Default)).
 
+parse_proplist(undefined) -> undefined;
 parse_proplist(L) ->
 	Unfolded = proplists:unfold(L),
 	[{X, to_bitstring(Y)} || {X,Y} <- Unfolded].
@@ -164,12 +168,13 @@ prep_return(
 
 prep_message(Exchange, RoutingKey, Props) ->
 	
+	Headers = parse_proplist(proplists:get_value(headers, Props, [])),
 	AmqpProps = #'P_basic'{
 		content_type = parse_prop(content_type, Props, <<"text/plain">>),
 		content_encoding = parse_prop(content_encoding, Props),
 		correlation_id = parse_prop(correlation_id, Props),
 		message_id = parse_prop(id, Props),
-		headers = parse_dict(parse_prop(headers, Props)),
+		headers = proplist_to_table(Headers),
 		delivery_mode = delivery_type(Props),
 		reply_to = parse_prop(reply_to, Props),
 		expiration = parse_prop(expiration, Props),
@@ -188,6 +193,18 @@ prep_message(Exchange, RoutingKey, Props) ->
 	},
 
 	{AmqpProps, Publish}.
+
+proplist_to_table(undefined) -> undefined;
+proplist_to_table(List) ->
+	Parsed = parse_proplist(List),
+	lists:map( fun({K, V}) -> kvp_to_amqp_field(K,V) end, List ).
+
+kvp_to_amqp_field(K,V) when is_boolean(V) -> {K, bool, V};
+kvp_to_amqp_field(K,V) when is_bitstring(V) -> {K, binary, V};
+kvp_to_amqp_field(K,V) when is_float(V) -> {K, float, V};
+kvp_to_amqp_field(K,V) when is_integer(V) -> {K, signedint, V};
+kvp_to_amqp_field(K,V) when is_list(V) -> {K, array, V};
+kvp_to_amqp_field(K,V) when is_binary(V) -> {K, binary, V}.
 
 queue_declare(Queue, Config) ->
 	#'queue.declare'{
