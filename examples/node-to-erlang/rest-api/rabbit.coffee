@@ -54,10 +54,11 @@ class Rabbit
 		x = @exchanges[exchange]
 		key = if key then key else ""
 		messageOpts.contentType ="application/json"
-		console.log "Publishing #{message} to #{exchange} on channel #{x} with options #{messageOpts}"
+		#console.log "Publishing #{message} to #{exchange} on channel #{x} with options #{messageOpts}"
 		x.publish key, message, messageOpts
 
 	subscribe: (queue, handler) ->
 		 @queues[queue].subscribe handler
 
+#192.168.1.106
 exports.broker = (callback) -> new Rabbit( "localhost", callback )

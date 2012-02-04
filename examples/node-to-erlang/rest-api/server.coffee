@@ -5,10 +5,12 @@
 # Created February 2, 2012 by Alex Robson
 
 reservation = require './reservation'
+dummy = require './dummy-reservation'
 
 restify = require 'restify'
 server = restify.createServer()
 
 reservation.init server, [], []
+dummy.init server, [], []
 
 server.listen(9000)

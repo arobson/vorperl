@@ -10,6 +10,7 @@ uuid = require 'uuid-lib'
 
 Reservations = () ->
 	self = this
+	accumulator = 0
 	declareExchange = (x) ->
 		broker.exchange x.name, x.opts , onExchangeComplete
 
@@ -44,6 +45,7 @@ Reservations = () ->
 		self.callbacks[id] = callback
 
 	reservation = ( exchange, command, user, resourceId, onResponse) ->
+		a = new Date()
 		id = uuid.create().value
 		registerCallback id, onResponse
 		message =
@@ -53,6 +55,8 @@ Reservations = () ->
 			correlationId: resourceId
 			replyTo: nodeId
 			messageId: id
+		accumulator += new Date() - a
+		console.log "******* #{accumulator}"
 
 	self.reserve = (resourceId, user, onResponse) ->
 		reservation "reservation", "reserve", user, resourceId, onResponse

@@ -25,7 +25,8 @@
 %%===================================================================
 
 create_topology() ->
-	vorperl:broker(),
+	% 192.168.1.106
+	vorperl:broker([{host, "localhost"}]),
 	vorperl:route_to(fun(X) -> gen_server:cast(?SERVER, X) end),
 	vorperl:exchange("reservation", [{type, "fanout"}]),
 	vorperl:queue("server-q1", [auto_delete]),

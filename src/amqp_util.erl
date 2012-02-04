@@ -94,11 +94,6 @@ get_reply(Envelope) ->
 		vorperl:send(ReplyExchange, Msg, Key, CombinedProps)
 	end.
 
-parse_dict(undefined) ->
-	undefined;
-parse_dict(D) ->
-	dict:from_list([ {X,to_bin(Y)} || {X,Y} <- dict:to_list(D) ]).
-
 parse_prop(Prop, Props) ->
 	parse_prop(Prop, Props, undefined).
 parse_prop(Prop, Props, Default) ->
@@ -129,7 +124,7 @@ prep_envelope(
 			content_type=Props#'P_basic'.content_type,
 			content_encoding=Props#'P_basic'.content_encoding,
 			type = Props#'P_basic'.type,
-			headers=Props#'P_basic'.headers,
+			headers=table_to_proplist(Props#'P_basic'.headers),
 			id=Props#'P_basic'.message_id,
 			timestamp=Props#'P_basic'.timestamp,
 			user_id=Props#'P_basic'.user_id,
@@ -197,8 +192,20 @@ prep_message(Exchange, RoutingKey, Props) ->
 proplist_to_table(undefined) -> undefined;
 proplist_to_table(List) ->
 	Parsed = parse_proplist(List),
-	lists:map( fun({K, V}) -> kvp_to_amqp_field(K,V) end, List ).
+	lists:map(fun({K, V}) -> 
+		NewK = key_to_bitstring(K),
+		kvp_to_amqp_field(NewK,V) 
+	end, Parsed).
 
+table_to_proplist(undefined) -> undefined;
+table_to_proplist(Table) ->
+	lists:map(fun({K, _F, V}) -> {K,V} end, Table).
+
+key_to_bitstring(K) when is_atom(K) -> list_to_bitstring(atom_to_list(K));
+key_to_bitstring(K) when is_list(K) -> list_to_bitstring(K);
+key_to_bitstring(K) when is_bitstring(K) -> K.
+
+kvp_to_amqp_field(K,V) when is_atom(V) -> {K, binary, list_to_bitstring(atom_to_list(V))};
 kvp_to_amqp_field(K,V) when is_boolean(V) -> {K, bool, V};
 kvp_to_amqp_field(K,V) when is_bitstring(V) -> {K, binary, V};
 kvp_to_amqp_field(K,V) when is_float(V) -> {K, float, V};

@@ -25,7 +25,7 @@ init = (server, pre, post) ->
 		resourceId = req.uriParams.id
 		reservations.release resourceId, 'sys', (result) ->
 			res.send( responseLookup[result], {message: result} )
-		
+	
 	status = (req, res) ->
 		resourceId = req.uriParams.id
 		reservations.status resourceId, 'sys', (result) ->
