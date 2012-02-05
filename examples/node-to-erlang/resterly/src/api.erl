@@ -57,4 +57,4 @@ handle('GET', ["reservation", ReservationId], Req) ->
 	end;
 
 handle(_X, _Y, Req) ->
-	Req:respond(404, "Fuuuuuck oooooooffffff").
+	Req:respond(404, "Go away |: |").
