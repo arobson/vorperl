@@ -4,6 +4,8 @@
 # license MIT
 # Created February 2, 2012 by Alex Robson
 
+reservations = require('./topology').reservations
+
 init = (server, pre, post) ->
 
 	responseLookup = 
@@ -16,17 +18,17 @@ init = (server, pre, post) ->
 
 	create = (req, res) ->
 		resourceId = req.uriParams.id
-		#reservations.reserve resourceId, 'sys', (result) ->
+		reservations.reserve resourceId, 'sys', (result) ->
 		res.send( 200, {message: "dummy"} )
 
 	release = (req, res) ->
 		resourceId = req.uriParams.id
-		#reservations.release resourceId, 'sys', (result) ->
+		reservations.release resourceId, 'sys', (result) ->
 		res.send( 200, {message: "dummy"} )
 		
 	status = (req, res) ->
 		resourceId = req.uriParams.id
-		#reservations.status resourceId, 'sys', (result) ->
+		reservations.status resourceId, 'sys', (result) ->
 		res.send( 200, {message: "dummy"} )
 
 	server.get '/dummy/:id', pre, status, post

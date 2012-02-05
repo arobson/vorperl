@@ -1,0 +1,21 @@
+{application, resterly,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {modules, [
+  	resterly_app,
+  	resterly_sup,
+  	api,
+    callback_server
+  	]},
+  {registered, [callback_server]},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  sasl,
+                  lager,
+                  vorperl
+                 ]},
+  {mod, { resterly_app, []}},
+  {env, []}
+ ]}.

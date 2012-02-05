@@ -45,7 +45,7 @@ Reservations = () ->
 		self.callbacks[id] = callback
 
 	reservation = ( exchange, command, user, resourceId, onResponse) ->
-		a = new Date()
+		#a = new Date()
 		id = uuid.create().value
 		registerCallback id, onResponse
 		message =
@@ -55,8 +55,8 @@ Reservations = () ->
 			correlationId: resourceId
 			replyTo: nodeId
 			messageId: id
-		accumulator += new Date() - a
-		console.log "******* #{accumulator}"
+		#accumulator += new Date() - a
+		#console.log "******* #{accumulator}"
 
 	self.reserve = (resourceId, user, onResponse) ->
 		reservation "reservation", "reserve", user, resourceId, onResponse

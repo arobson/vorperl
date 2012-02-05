@@ -6,6 +6,7 @@
 
 reservation = require './reservation'
 dummy = require './dummy-reservation'
+#profiler = require 'profiler'
 
 restify = require 'restify'
 server = restify.createServer()
@@ -13,4 +14,4 @@ server = restify.createServer()
 reservation.init server, [], []
 dummy.init server, [], []
 
-server.listen(9000)
+server.listen(9090)
