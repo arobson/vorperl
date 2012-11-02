@@ -54,6 +54,7 @@ class Rabbit
 		x = @exchanges[exchange]
 		key = if key then key else ""
 		messageOpts.contentType ="application/json"
+		console.log "sending..."
 		#console.log "Publishing #{message} to #{exchange} on channel #{x} with options #{messageOpts}"
 		x.publish key, message, messageOpts
 
