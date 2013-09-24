@@ -205,7 +205,7 @@ The built-in encoder / decoder pairs exist only for plain/text, application/x-er
 	% adding support for a new content-type
 	Encoder = fun(X) -> %do something and return binary result% end,
 	Decoder = fun(X) -> %decode binary to Erlang representation% end,
-	vorperl:content_type(<<"application/custom">>, Encoder, Decoder).
+	vorperl:content_provider(<<"application/custom">>, Encoder, Decoder).
 ```
 
 ## Feature -- Default / Custom Return Handler

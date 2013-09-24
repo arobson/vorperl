@@ -16,6 +16,8 @@
 
 -define(SERVER, ?MODULE).
 
+-compile([export_all]).
+
 -record(state, {
 	router, 
 	control_channel,

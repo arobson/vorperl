@@ -235,11 +235,9 @@ to_bitstring(X) when is_list(X) ->
 	list_to_bitstring(X);
 to_bitstring(X) -> X.
 
+to_bin([]) -> [];
 to_bin([{X,Y}|T]) ->
 	lists:append([{to_bin(X), to_bin(Y)}], to_bin(T));
-to_bin(X) when is_list(X) ->
-	list_to_bitstring(X);
-to_bin(X) when is_bitstring(X) ->
-	X;
-to_bin(X) ->
-	X.
+to_bin(X) when is_list(X) -> list_to_bitstring(X);
+to_bin(X) when is_bitstring(X) -> X;
+to_bin(X) -> X.
