@@ -23,6 +23,6 @@ test: app
 
 start:
 		if test -d $(SYNC_PATH); \
-		then exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin -boot start_sasl -s sync -s lager -run vorperl; \
-		else exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin -boot start_sasl -s reloader -s lager -run vorperl; \
+		then exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin -boot start_sasl -s lager -run vorperl; \
+		else exec erl -pa $(PWD)/deps/*/ebin -pa $(PWD)/ebin -boot start_sasl -s lager -run vorperl; \
 		fi
