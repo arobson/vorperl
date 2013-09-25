@@ -102,7 +102,7 @@ parse_prop(Prop, Props, Default) ->
 parse_proplist(undefined) -> undefined;
 parse_proplist(L) ->
 	Unfolded = proplists:unfold(L),
-	[{X, to_bitstring(Y)} || {X,Y} <- Unfolded].
+	[{X, to_bin(Y)} || {X,Y} <- Unfolded].
 
 prep_envelope(
 		#'basic.deliver'{
@@ -161,23 +161,25 @@ prep_return(
 			cluster_id=Props#'P_basic'.cluster_id
 		}.
 
+%content_type, content_encoding, headers, delivery_mode, priority, correlation_id, reply_to, expiration, message_id, timestamp, type, user_id, app_id, cluster_id
 prep_message(Exchange, RoutingKey, Props) ->
 	
 	Headers = parse_proplist(proplists:get_value(headers, Props, [])),
 	AmqpProps = #'P_basic'{
 		content_type = parse_prop(content_type, Props, <<"text/plain">>),
 		content_encoding = parse_prop(content_encoding, Props),
-		correlation_id = parse_prop(correlation_id, Props),
-		message_id = parse_prop(id, Props),
 		headers = proplist_to_table(Headers),
 		delivery_mode = delivery_type(Props),
+		priority = parse_prop(priority, Props),
+		correlation_id = parse_prop(correlation_id, Props),
 		reply_to = parse_prop(reply_to, Props),
 		expiration = parse_prop(expiration, Props),
+		message_id = parse_prop(id, Props),
 		timestamp = parse_prop(timestamp, Props),
+		type = parse_prop(type, Props),
 		user_id = parse_prop(user_id, Props),
 		app_id = parse_prop(app_id, Props),
-		cluster_id = parse_prop(cluster_id, Props),
-		priority = parse_prop(priority, Props)
+		cluster_id = parse_prop(cluster_id, Props)
 	},
 
 	Publish = #'basic.publish'{ 
