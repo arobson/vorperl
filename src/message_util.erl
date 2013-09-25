@@ -1,5 +1,5 @@
 %%% @author Alex Robson
-%%% @copyright appendTo, 2012
+%%% @copyright 2012
 %%% @doc
 %%%
 %%% @end
@@ -26,32 +26,40 @@ bert_decode(Binary) ->
 	binary_to_term(Binary).
 
 json_encode(PropList) ->
-	jiffy:encode(json_format(PropList)).
+	Format = json_format(PropList),
+	io:format("~p~n",[Format]),
+	jiffy:encode(Format).
 
-json_format(X) ->
-	{json_prep(amqp_util:to_bitstring(X))}.
+
+json_format(X) when is_list(X) ->
+	{json_prep(amqp_util:to_bitstring(X))};
+json_format(X) -> X.
 
 json_prep([]) -> [];
-json_prep([{X,Y}|T]) when is_list(Y)->
-	lists:append([[{json_prep(X), json_format(Y)}], json_prep(T)]);
+json_prep([H|T]) when is_list(H) ->
+	[{json_prep(H)}] ++ json_prep(T);
 json_prep([{X,Y}|T]) ->
 	lists:append([{json_prep(X), json_prep(Y)}], json_prep(T));
-json_prep(X) -> X.
+json_prep(X) -> json_format(X).
 
 json_decode(Json) ->
 	json_strip(jiffy:decode(Json)).
 
 json_strip([]) -> [];
-json_strip({[{X,Y}|T]}) ->
+json_strip([{[_|_]=H}|T]) -> 
+	[json_strip(H)] ++ json_strip(T);
+json_strip({[{X,Y}|T]}) -> 
 	json_strip([{X,Y}|T]);
-json_strip([{X,Y}|T]) ->
+json_strip([{X,Y}|T]) -> 
 	lists:append([json_strip({X, Y})], json_strip(T));
 json_strip({X,Y}) ->
 	NewX = to_atom(X),
 	{NewX, json_strip(Y)};
+json_strip(X) when is_bitstring(X) -> bitstring_to_list(X);
 json_strip(X) -> X.
 
-to_atom(X) -> list_to_atom(bitstring_to_list(X)).
+to_atom(X) when is_bitstring(X) -> to_atom(bitstring_to_list(X));
+to_atom([H|L]) -> list_to_atom([string:to_lower(H)|L]).
 
 default_providers() ->
 	Json_Coders = { 
@@ -63,9 +71,7 @@ default_providers() ->
 		fun(X) -> bert_decode(X) end 			
 	},
 	dict:from_list([
-		{"application/json", Json_Coders },
 		{<<"application/json">>, Json_Coders },
-		{"application/x-erlang-binary", Bert_Coders },
 		{<<"application/x-erlang-binary">>, Bert_Coders }
 	]).
 

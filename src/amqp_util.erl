@@ -1,5 +1,5 @@
 %%% @author Alex Robson
-%%% @copyright appendTo, 2012
+%%% @copyright 2012
 %%% @doc
 %%%
 %%% @end
@@ -223,6 +223,8 @@ queue_declare(Queue, Config) ->
 		nowait=parse_prop(nowait, Config, false)
 	}.
 
+to_bitstring([H|T]) when is_list(H) ->
+	[to_bitstring(H)] ++ to_bitstring(T);
 to_bitstring([{X,Y}|T]) -> 
 	H = {to_bitstring(X), to_bitstring(Y)},
 	case T of
@@ -230,7 +232,7 @@ to_bitstring([{X,Y}|T]) ->
 		_ -> lists:append([H], to_bitstring(T))
 	end;
 to_bitstring(X) when is_bitstring(X) -> X;
-to_bitstring([]) -> <<"">>;
+to_bitstring([]) -> []; %%<<"">>;
 to_bitstring(X) when is_list(X) ->
 	list_to_bitstring(X);
 to_bitstring(X) -> X.

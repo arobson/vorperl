@@ -1,5 +1,5 @@
 %%% @author Alex Robson
-%%% @copyright appendTo, 2012
+%%% @copyright 2012
 %%% @doc
 %%%
 %%% @end
