@@ -15,6 +15,7 @@
 	content_provider/3,
 	exchange/1,
 	exchange/2,
+	list_content_providers/0,
 	on_return/1,
 	queue/1,
 	queue/2,
@@ -49,7 +50,7 @@ broker(Props) ->
 	connection_pool:add_broker(Props).
 
 content_provider( ContentType, Encoder, Decoder ) ->
-	gen_server:cast(?SERVER, {ContentType, Encoder, Decoder}).
+	gen_server:cast(?SERVER, {content_provider, ContentType, Encoder, Decoder}).
 
 % default exchange
 exchange(Exchange) ->
@@ -62,6 +63,9 @@ exchange(Exchange, Options) ->
 		Exchange, 
 		Options
 	}).
+
+list_content_providers() ->
+	gen_server:call(?SERVER, list_content_providers).
 
 on_return(Handler) ->
 	gen_server:cast(connection_pool, {

@@ -45,13 +45,16 @@ init([]) ->
 	}}.
 
 handle_call(stop, _From, State) ->
-  {stop, normal, stopped, State};
+	{stop, normal, stopped, State};
  
 handle_call(state, _From, State) ->
-  {reply, State, State};
+	{reply, State, State};
+
+handle_call(list_content_providers, _From, State) ->
+	{reply, State#state.content_providers, State};
  
 handle_call(_Request, _From, State) ->
-  {reply, ok, State}.
+	{reply, ok, State}.
 
 handle_cast({bind, Source, Target, Topic}, State) ->
 	{noreply, bind(
@@ -77,9 +80,9 @@ handle_cast({create_exchange, Exchange, ExchangeConfig}, State) ->
 	{noreply, declare_exchange(Ex, Props, State)};
 
 handle_cast({create_queue, Queue, QueueConfig}, State) ->
-  	Q = amqp_util:to_bitstring(Queue),
+	Q = amqp_util:to_bitstring(Queue),
 	Props = amqp_util:parse_proplist(QueueConfig),
-  	{noreply, declare_queue(Q, Props, State)};
+	{noreply, declare_queue(Q, Props, State)};
 
 handle_cast({new_subscription, Queue, Pid}, State) ->
 	Q = amqp_util:to_bitstring(Queue),
@@ -137,13 +140,13 @@ handle_info({'DOWN', Ref, process, _Pid, Info}, State) ->
 	end;
 
 handle_info(_Info, State) ->
-  {noreply, State}.
+	{noreply, State}.
  
 terminate(_Reason, _State) ->
-  ok.
+	ok.
  
 code_change(_OldVsn, State, _Extra) ->
-  {ok, State}.
+	{ok, State}.
 
 %%===================================================================
 %%% Internal
