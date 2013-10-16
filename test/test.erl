@@ -16,7 +16,7 @@ get_json_representation() ->
 	<<"{\"container\":1,\"list\":[{\"id\":1,\"content\":\"hello\"},{\"id\":2,\"content\":\"world\"}]}">>.
 
 get_object_representation() ->
-	[{container,1},{list,[[{id,1},{content,"hello"}],[{id,2},{content,"world"}]]}].
+	[{container,1},{list,[[{id,1},{content,<<"hello">>}],[{id,2},{content,<<"world">>}]]}].
 
 json_to_props_test() ->
 	Json = get_json_representation(),
