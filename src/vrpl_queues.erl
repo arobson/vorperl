@@ -4,11 +4,11 @@
 %%%
 %%% @end
 %%% @license MIT
-%%% Created January 16, 2012 by Alex Robson
+%%% Created January 20, 2012 by Alex Robson
 
--module(vorperl_sup).
+-module(vrpl_queues).
 -behaviour(supervisor).
--export([start_link/0, init/1]).
+-export([start_link/0, init/1, add/2]).
 
 -define(SERVER, ?MODULE).
 
@@ -19,20 +19,16 @@
 start_link() ->
 	supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
+add(Queue, Properties) ->
+	supervisor:start_child(?SERVER, [Queue, Properties]).
+
 init([]) ->
-	RestartStrategy = one_for_one,
-    MaxRestarts = 2,
+	RestartStrategy = simple_one_for_one,
+    MaxRestarts = 5,
     MaxSecondsBetweenRestarts = 60,
-
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
-
-    Config = create_child_spec(vrpl_configuration, worker, permanent, 2000, []),
-    Exchanges =create_child_spec(vrpl_exchanges, supervisor, permanent, 2000, []),
-    Queues =create_child_spec(vrpl_queues, supervisor, permanent, 2000, []),
-    Connections = create_child_spec(vrpl_connection, worker, permanent, 2000, []),
-    Channels = create_child_spec(vrpl_channel, worker, permanent, 2000, []),
-
-    {ok, {SupFlags, [Config, Connections, Channels, Exchanges, Queues]}}.
+    Queue = create_child_spec(vrpl_queue, worker, permanent, 2000, []),
+    {ok, {SupFlags, [Queue]}}.
 
 %%===================================================================
 %%% Internal functions

@@ -17,6 +17,7 @@
 %%===================================================================
 
 start(_Type, _Args) ->
+	vrpl_process:init(),
 	vorperl_sup:start_link().
 
 stop(_State) ->

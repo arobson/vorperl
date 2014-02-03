@@ -11,132 +11,116 @@
 -export([
 	bind/3,
 	broker/0,
-	broker/1, 
+	broker/2, 
 	content_provider/3,
-	exchange/1,
 	exchange/2,
-	list_content_providers/0,
-	on_return/1,
-	queue/1,
+	publish/2, 
+	publish/3,
+	publish/4,
 	queue/2,
-	route_to/1,
-	send/2, 
-	send/3,
-	send/4,
 	start/0,
+	start_subscription/1,
 	stop_subscription/1,
-	subscribe_to/1,
-	subscribe_to/2,
 	topology/3
 	]).
 
--define(SERVER, vorperl_server).
+-include("amqp.hrl").
+
+-define(DEFAULT, "default").
 
 %%===================================================================
 %%% API
 %%===================================================================
 
-bind( Source, Destination, Topic ) ->
-	gen_server:cast(?SERVER, {
-		bind, 
-		Source, 
-		Destination, 
-		Topic}).
+bind(Source, Destination, Topic) ->
+	case is_exchange(Destination) of
+		true -> bind_exchange(?DEFAULT, Source, Destination, Topic);
+		_ -> bind_queue(?DEFAULT, Source, Destination, Topic)
+	end.
 
-broker() ->
-	connection_pool:add_broker().
+broker() -> broker(?DEFAULT, []).
 
-broker(Props) ->
-	connection_pool:add_broker(Props).
+broker(Name, Properties) ->vrpl_configuration:store_broker(Name, Properties).
 
-content_provider( ContentType, Encoder, Decoder ) ->
-	gen_server:cast(?SERVER, {content_provider, ContentType, Encoder, Decoder}).
-
-% default exchange
-exchange(Exchange) ->
-	exchange(Exchange, []).
+content_provider(ContentType, Encoder, Decoder) ->
+	vrpl_configuration:store_serializer(ContentType, {Encoder, Decoder}).
 
 % configured exchange
-exchange(Exchange, Options) ->
-	gen_server:cast(?SERVER, {
-		create_exchange, 
-		Exchange, 
-		Options
-	}).
+exchange(Exchange, Properties) -> vrpl_exchange:define(Exchange, Properties).
 
-list_content_providers() ->
-	gen_server:call(?SERVER, list_content_providers).
-
-on_return(Handler) ->
-	gen_server:cast(connection_pool, {
-		on_return,
-		Handler
-	}).
-
-queue(Queue) ->
-	queue(Queue, []).
-
-queue(Queue, Options) ->
-	gen_server:cast(?SERVER, {
-		create_queue, 
-		Queue, 
-		Options
-	}).
-
-route_to(Router) ->
-	gen_server:cast(?SERVER, {
-		route,
-		Router
-	}).
-
-send(Exchange, Message) ->
-	send(
+publish(Exchange, Message) ->
+	publish(
 		Exchange, 
 		Message, 
 		<<"">>
 	).
 
-send(Exchange, Message, RoutingKey) ->
-	send(
+publish(Exchange, Message, RoutingKey) ->
+	publish(
 		Exchange, 
 		Message,
 		RoutingKey, 
 		[]
 	).
 
-send(Exchange, Message, RoutingKey, Properties) ->
-	gen_server:cast(?SERVER, {
-		send, 
-		Exchange, 
+publish(Exchange, Message, RoutingKey, Properties) ->
+	vrpl_exchange:publish(
+		Exchange,
 		Message,
-		RoutingKey, 
+		RoutingKey,
 		Properties
-	}).
+	).
 
-start() ->
-	application:start(vorperl).
+queue(Queue, Properties) -> vrpl_queue:define(Queue, Properties).
 
-stop_subscription(Queue) ->
-	gen_server:cast(?SERVER, {
-		stop_subscription,
-		Queue
-	}).
+start() -> application:start(vorperl).
 
-subscribe_to(Queue) ->
-	gen_server:cast(?SERVER, {
-		subscribe,
-		Queue
-	}).
+start_subscription(Queue) -> vrpl_queue:start_subscription(Queue).
 
-subscribe_to(Queue, RouteTo) ->
-	gen_server:cast(?SERVER, {
-		subscribe,
-		Queue,
-		RouteTo
-	}).
+stop_subscription(Queue) -> vrpl_queue:stop_subscription(Queue).
 
 topology({exchange, ExchangeName, ExchangeProps}, 
 		 {queue, QueueName, QueueProps}, Topic) ->
 	exchange(ExchangeName, ExchangeProps),
 	queue(QueueName, QueueProps),
 	bind(ExchangeName, QueueName, Topic).
+
+%% ===================================================================
+%%  Internal
+%% ===================================================================
+
+bind_exchange(Broker, Source, Destination, "") ->
+	Channel = vrpl_channel:get(Broker, control),
+	Binding = #'exchange.bind'{
+		destination=amqp_util:to_bitstring(Destination), 
+		source=amqp_util:to_bitstring(Source)},
+	amqp_channel:call(Channel, Binding);
+
+bind_exchange(Broker, Source, Destination, Topic) ->
+	Channel = vrpl_channel:get(Broker, control),
+	Binding = #'exchange.bind'{
+		destination=amqp_util:to_bitstring(Destination), 
+		source=amqp_util:to_bitstring(Source),
+		routing_key=amqp_util:to_bitstring(Topic)},
+	amqp_channel:call(Channel, Binding).
+
+bind_queue(Broker, Source, Destination, "") ->
+	Channel = vrpl_channel:get(Broker, control),
+	Binding = #'queue.bind'{
+		queue=amqp_util:to_bitstring(Destination), 
+		exchange=amqp_util:to_bitstring(Source)},
+	amqp_channel:call(Channel, Binding);
+
+bind_queue(Broker, Source, Destination, Topic) ->
+	Channel = vrpl_channel:get(Broker, control),
+	Binding = #'queue.bind'{
+		queue=amqp_util:to_bitstring(Destination), 
+		exchange=amqp_util:to_bitstring(Source),
+		routing_key=amqp_util:to_bitstring(Topic)},
+	amqp_channel:call(Channel, Binding).
+
+is_exchange(Name) -> 
+	case vrpl_configuration:get_exchange(Name) of
+		undefined -> false;
+		_ -> true
+	end.

@@ -1,15 +1,20 @@
 {application, vorperl, [
 	{description, "RabbitMQ API"},
-	{vsn, "0.0.1"},
+	{vsn, "0.1.0"},
 	{modules, [
+		amqp_util,
+		vorperl,
 		vorperl_app, 
 		vorperl_sup,
-		subscription_sup,
-		vorperl,
-		amqp_util,
-		connection_pool,
-		message_util,
-		queue_subscriber
+		vrpl_channel,
+		vrpl_configuration,
+		vrpl_connection,
+		vrpl_exchange,
+		vrpl_exchanges,
+		vrpl_queue,
+		vrpl_queues,
+		vrpl_message_util,
+		vrpl_process
 		]},
 	{registered, [vorperl_server, connection_pool, queue_subscriber]},
 	{applications, [

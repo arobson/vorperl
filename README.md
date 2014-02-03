@@ -2,8 +2,6 @@
 
 RabbitMQ is amazing. I love it. I have a rabbit shaped hammer and everything looks like a carrot-nail. 
 
-Unfortunately the rabbit-erlang-client API is real world implementation of a jabberwocky and you need to tame it. You need vorperl.
-
 Vorperl is near beta (in that it supports a decent baseline functionality). Please do not attempt to slay production jabberwockies at this time.
 
 ## How To Use
@@ -29,9 +27,9 @@ It also needs to have started before your code calls it. Do this by listing it i
 
 ## Building / Dev environment
 
-Thanks to OJ, vorperl is both rebar and make friendly. Pull the source down run make and you can start testing it in the shell with make start.
+Thanks to OJ Reeves, vorperl is both rebar and make friendly. Pull the source down run make and you can start testing it in the shell with make start.
 
-OJ has reloader running by default and if you happen to have @rustyio's sync installed (http://github.com/rustyio/sync) in your $ERL_LIBS path, then it will use sync instead. Either way, it feels like winning.
+The reloader runs by default and if you happen to have @rustyio's sync installed (http://github.com/rustyio/sync) in your $ERL_LIBS path, then it will use sync instead. Either way, it feels like winning.
 
 ### Step 1 - Connect to a broker
 You always have to do this first. If you don't you'll get a lovely crash dump. I'll improve that one day, but for now, how 'bout just remember you have to connect first.
@@ -71,7 +69,8 @@ You can create exchanges, queues and bindings as follows:
 		auto_delete,
 		passive,
 		internal,
-		nowait
+		nowait,
+		{content_type, "application/json"}
 	]).
 
 	%simple queue declaration with defaults
@@ -87,12 +86,12 @@ You can create exchanges, queues and bindings as follows:
 		auto_delete,
 		passive,
 		nowait,
-		{route_to, Route} % Can be fun(X), Pid or {Module, Function}
+		{route, Route} % Can be fun(X), Pid or {Module, Function}
 	]).
 
 	%% binding a queue to exchange
 
-	vorperl:bind("x1", "q1", ""). % matches all keys
+	vorperl:bind("x1", "q1", "#"). % matches all keys
 
 	vorperl:bind("x1", "q1", "*"). % matches all keys with 1 term
 
@@ -110,20 +109,7 @@ You can declare an exchange, a queue and bind them together all in one call
 	).
 ```
 
-### Step 4 - Setting The Router
-The default message handler for all subscriptions is unhelpful and simply prints the message and then acks it. You can change this by providing your own fun/1, Pid or MFA signature.
-
-Currently, calling route_to resets the router for all active queues and changes the default.
-
-```erlang
-	vorperl:route_to(fun(X) -> io:format("this is a waste!~n") end).
-
-	vorperl:route_to(AGenServerPid).
-
-	vorperl:route_to({Module, Function}).
-```
-
-### Step 5 - Sending Messages For Fun and Profit
+### Step 4 - Sending Messages
 Sending a message is simple-ish.
 
 ```erlang
@@ -132,13 +118,11 @@ Sending a message is simple-ish.
 	vorperl:send("x1", "message", "routing.key").
 
 	vorperl:send("x1", "message", "routing.key",[
-		{content_type, "plain/text"},
 		{content_encoding, "binary"},
 		{correlation_id, "1"},
 		{id, "1"},
 		persist, % this flag causes the message to get stored to disk if needed
 		mandatory,
-		immediate,
 		{reply_to, "exchange"},
 		{expiration, Date},
 		{timestamp, Timestamp},
@@ -179,14 +163,11 @@ vorperl wraps the message in a meta-data rich envelope. You'll need to include t
 ```
 
 ### Feature - Subscribe to Queue
-Vorperl currently automatically subscribes to every queue you declare. For topologies where the queue is already declared or in cases where you may want to start/stop subscriptions, you can call one of the subscribe functions:
+Vorperl currently automatically subscribes to every queue you declare. For topologies where the queue is already declared or in cases where you may want to start/stop subscriptions:
 
 ```erlang
 	% subscribe to a queue
-	vorperl:subscribe_to("q1").
-
-	% subscribe to a queue and provide a custom route target
-	vorperl:subscribe_to("q1", Route). % fun(X), Pid or {M, F}
+	vorperl:start_subscription("q1").
 ```
 
 ## Feature -- Stop Subscription
@@ -208,17 +189,6 @@ The built-in encoder / decoder pairs exist only for plain/text, application/x-er
 	vorperl:content_provider(<<"application/custom">>, Encoder, Decoder).
 ```
 
-## Feature -- Default / Custom Return Handler
-When a message is marked as mandatory and no queue is bound to the exchange OR if a message is marked immediate and there is no consumer pulling messages from the queue, then the RabbitMQ broker will send your client a return of the undeliverable message.
-
-By default, vorperl just prints this to the console. Helpful? Not really. But you can change that by using the following call:
-
-```erlang
-	vorperl:on_return(Handler).
-```
-
-Where handler is a Pid, fun/2 or {M,F} signature. If you provide a Pid, you get a {on_return, Reason, ReturnedMessage} message to receive. Otherwise the fun or function provided will be called with Reason and ReturnedMessage where ReturnedMessage is the #envelope record explained before.
-
 ## Contributors
 
 Thanks to OJ Reeves for cleaning up several issues, adding Make support and a few additions to make using/hacking on this project friendlier!
@@ -236,6 +206,4 @@ MIT / GPL
 
 ## Disclaimer
 
-There are no unit tests so your confidence in this project should take that into consideration. Don't B h8n' though, I plan to add them. Testing this kind of thing is rather difficult since most of it is just interacting with I/O and I'm unfamiliar with mocking approaches in Erlang.
-
-I am not in my right mind, but I do enjoy writing software and posting it to github where it can be promptly ignored.
+There are no unit tests so your confidence in this project should take that into consideration. I plan to add them. Testing this kind of thing is rather difficult since most of it is just interacting with I/O and I'm unfamiliar with mocking approaches in Erlang.

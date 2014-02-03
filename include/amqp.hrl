@@ -1,11 +1,5 @@
 -include_lib("amqp_client/include/amqp_client.hrl").
 
--record(broker, {
-	name,
-	params=#amqp_params_network{},
-	connection
-}).
-
 -record(envelope, {
 	id,
 	exchange, 

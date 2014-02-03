@@ -1,7 +1,7 @@
-%%% @author Alex Robson
-%%% @copyright 2012
+%%% @author Alex Robson <asrobson@gmail.com>
+%%% @copyright Alex Robson 2012
 %%% @doc
-%%%
+%%%	Convenience functions for working with amqp. Internalizes all work with records in amqp.hrl.
 %%% @end
 %%% @license MIT
 %%% Created January 20, 2012 by Alex Robson
@@ -16,7 +16,7 @@
 			broker_declare/1,
 			exchange_declare/2,
 			prep_envelope/4,
-			prep_message/3,
+			prep_message/4,
 			prep_return/2,
 			parse_proplist/1,
 			proplist_to_table/1,
@@ -27,10 +27,29 @@
 
 -include("amqp.hrl").
 
+
+%% @doc Handles the creation of a broker record from a proplist. This
+%% prevents the user from having to import the amqp.hrl header file
+%% and also provides simple defaults for missing arguments where possible.
+%% The list of properties are as follows:
+%%		auth_mechanism 		default is username & password
+%%		channel_max 		max channels allowed. default is 0
+%%		client_properties 	client specific properties (a proplist, default is [])
+%%		connection_timeout	# of seconds to wait for connection. default is infinity
+%%		frame_max			maximum frame size in bytes allowed. default is 0
+%%		heartbeat			delay in seconds between heartbeats. default is 0 (no heartbeat)
+%%		host 				the rabbit host name/IP as a string. default is "localhost"
+%%		password			password for the user. default is "guest"
+%%		port 				the broker port. default is 5672
+%%		socket_options		
+%%		
+
+-spec broker_declare([{atom(),term()}]) -> {string(), #amqp_params_network{}}.
+
 broker_declare(Props) ->
 	Default = #amqp_params_network{},
 	DefaultAuth = Default#amqp_params_network.auth_mechanisms,
-	Auth = #amqp_params_network{
+	Params = #amqp_params_network{
 			username=parse_prop(user, Props, "guest"),
 			password=parse_prop(password, Props, "guest"),
 			virtual_host=parse_prop(virtual_host, Props, "/"),
@@ -45,10 +64,7 @@ broker_declare(Props) ->
 			client_properties=proplists:get_value(client, Props, []),
 			socket_options=proplists:get_value(socket, Props, [])
 		},
-	#broker{
-		name = parse_prop(name, Props, "default"),
-		params = Auth
-	}.
+	Params.
 
 delivery_type(Props) ->
 	case parse_prop(persist, Props, false) of
@@ -162,11 +178,10 @@ prep_return(
 		}.
 
 %content_type, content_encoding, headers, delivery_mode, priority, correlation_id, reply_to, expiration, message_id, timestamp, type, user_id, app_id, cluster_id
-prep_message(Exchange, RoutingKey, Props) ->
-	
+prep_message(Exchange, RoutingKey, Props, ExchangeProps) ->
 	Headers = parse_proplist(proplists:get_value(headers, Props, [])),
 	AmqpProps = #'P_basic'{
-		content_type = parse_prop(content_type, Props, <<"text/plain">>),
+		content_type = parse_prop(content_type, ExchangeProps, <<"text/plain">>),
 		content_encoding = parse_prop(content_encoding, Props),
 		headers = proplist_to_table(Headers),
 		delivery_mode = delivery_type(Props),
@@ -181,14 +196,11 @@ prep_message(Exchange, RoutingKey, Props) ->
 		app_id = parse_prop(app_id, Props),
 		cluster_id = parse_prop(cluster_id, Props)
 	},
-
 	Publish = #'basic.publish'{ 
 		exchange = to_bitstring(Exchange),
 		mandatory = parse_prop(mandatory, Props, false),
-		immediate = parse_prop(immediate, Props, false),
 		routing_key = to_bitstring(RoutingKey)
 	},
-
 	{AmqpProps, Publish}.
 
 proplist_to_table(undefined) -> undefined;
@@ -216,14 +228,38 @@ kvp_to_amqp_field(K,V) when is_list(V) -> {K, array, V};
 kvp_to_amqp_field(K,V) when is_binary(V) -> {K, binary, V}.
 
 queue_declare(Queue, Config) ->
+	Args = build_args(Config),
 	#'queue.declare'{
 		queue=Queue,
 		exclusive=parse_prop(exclusive, Config, false),
 		durable=parse_prop(durable, Config, false),
 		auto_delete=parse_prop(auto_delete, Config, false),
 		passive=parse_prop(passive, Config, false),
-		nowait=parse_prop(nowait, Config, false)
+		nowait=parse_prop(nowait, Config, false),
+		arguments = Args
 	}.
+
+build_args(Config) -> build_args(Config, []).
+
+build_args([], Args) -> Args;
+build_args([{alternate, X}|T], Args) ->
+	build_args(T, [kvp_to_amqp_field(<<"alternate-exchange">>, to_bitstring(X)) || Args]);
+build_args([{dead_letter, X}|T], Args) ->
+	build_args(T, [kvp_to_amqp_field(<<"x-dead-letter-exchange">>, to_bitstring(X)) || Args]);
+build_args([{dead_letter, X, RK}|T], Args) ->
+	DLX = kvp_to_amqp_field(<<"x-dead-letter-exchange">>, to_bitstring(X)),
+	DLXRK = kvp_to_amqp_field(<<"x-dead-letter-routing-key">>, to_bitstring(RK)),
+	Args1 = [DLX || Args],
+	Args2 = [DLXRK || Args1],
+	build_args(T, Args2);
+build_args([{max_length, M}|T], Args) ->
+	build_args(T, [kvp_to_amqp_field(<<"x-max-length">>, M) || Args]);
+build_args([{message_ttl, M}|T], Args) ->
+	build_args(T, [kvp_to_amqp_field(<<"x-message-ttl">>, M) || Args]);
+build_args([{ttl, M}|T], Args) ->
+	build_args(T, [kvp_to_amqp_field(<<"x-expires">>, M) || Args]);
+build_args([_|T], Args) ->
+	build_args(T, Args).
 
 to_bitstring([H|T]) when is_list(H) ->
 	[to_bitstring(H)] ++ to_bitstring(T);
