@@ -83,11 +83,17 @@ exchange_declare(Exchange, Config) ->
 		nowait=parse_prop(nowait, Config, false)
 	}.
 
-get_ack(Tag, Channel) ->
-	fun() -> amqp_channel:cast(Channel, #'basic.ack'{delivery_tag=Tag}) end.
+get_ack(Tag, _Channel) ->
+	fun() ->
+		gen_server:cast(self(), {ack, Tag})
+		% amqp_channel:cast(Channel, #'basic.ack'{delivery_tag=Tag}) 
+	end.
 	
-get_nack(Tag, Channel) ->
-	fun() -> amqp_channel:cast(Channel, #'basic.nack'{delivery_tag=Tag}) end.
+get_nack(Tag, _Channel) ->
+	fun() -> 
+		gen_server:cast(self(), {nack, Tag})
+		% amqp_channel:cast(Channel, #'basic.nack'{delivery_tag=Tag}) 
+	end.
 
 get_reply(Envelope) ->
 	ReplyExchange = Envelope#envelope.reply_to,

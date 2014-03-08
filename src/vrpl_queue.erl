@@ -24,7 +24,8 @@
 	delivered = ordsets:new(),
 	nacks = ordsets:new(),
 	last_ack = 0,
-	last_nack = 0
+	last_nack = 0,
+	count=0
 	}).
 
 -record(state, {channel, props, name, monitor, router, tag, pending=#deliveries{}}).
@@ -78,14 +79,44 @@ handle_call(unsubscribe, _From,
 handle_call(_Request, _From, State) ->
 	{reply, ok, State}.
 
+handle_cast({ack, Tag}, #state{pending=Pending, channel=Channel}=State) ->
+	Count = Pending#deliveries.count,
+	Delivered = Pending#deliveries.delivered,
+	Delivered2 = ordsets:del_element({t, Tag}, Delivered),
+	Pending2 = Pending#deliveries{delivered=Delivered2},
+	Pending3 = if
+		Count >= 100 ->
+			{LastAck, LastNack} = check_tags(Pending2, Channel),
+			Pending2#deliveries{count=0, last_ack=LastAck, last_nack=LastNack};
+		true ->
+			Pending2#deliveries{count=Count+1}
+	end,
+	{noreply, State#state{pending=Pending3}};
+
+handle_cast({nack, Tag}, #state{pending=Pending, channel=Channel}=State) ->
+	Pending2 = Pending#deliveries{nacks=ordsets:add_element({t, Tag}, Pending#deliveries.nacks)},
+	Count = Pending#deliveries.count,
+	Delivered = Pending#deliveries.delivered,
+	Delivered2 = ordsets:del_element({t, Tag}, Delivered),
+	Pending2 = Pending#deliveries{delivered=Delivered2},
+	Pending3 = if
+		Count >= 100 ->
+			{LastAck, LastNack} = check_tags(Pending2, Channel),
+			Pending2#deliveries{count=0, last_ack=LastAck, last_nack=LastNack};
+		true ->
+			Pending2#deliveries{count=Count+1}
+	end,
+
+	{noreply, State#state{pending=Pending3}};
+
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 handle_info({'DOWN', Ref, process, _Pid, _Info}, #state{monitor=Ref}=State) ->
 	{noreply, State};
 
-handle_info({#'basic.deliver'{}=Deliver, #amqp_msg{}=Msg}, 
-				#state{router=Router, channel=Channel, name=Queue}=State) ->
+handle_info({#'basic.deliver'{delivery_tag=Tag}=Deliver, #amqp_msg{}=Msg}, 
+				#state{router=Router, channel=Channel, name=Queue, pending=Pending}=State) ->
 	Envelope = amqp_util:prep_envelope( Deliver, Msg, Queue, Channel ),
 	Decoded = decode(Envelope),
 	case Router of
@@ -95,7 +126,8 @@ handle_info({#'basic.deliver'{}=Deliver, #amqp_msg{}=Msg},
 			X ! Decoded;
 		{M, F} -> apply(M, F, Decoded)
 	end,
-	{noreply, State};
+	Pending2 = Pending#deliveries{delivered=ordsets:add_element({t, Tag}, Pending#deliveries.delivered)},
+	{noreply, #state{pending=Pending2}=State};
 
 handle_info(#'basic.consume_ok'{consumer_tag=Tag}, State) ->
 	{noreply, State#state{tag=Tag}};
@@ -117,9 +149,104 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal
 %%===================================================================
 
+ack(Tag, Multiple, Channel) ->
+	Ack = #'basic.ack'{delivery_tag=Tag, multiple=Multiple},
+	amqp_channel:call(Channel, Ack).
+
+nack(Tag, Multiple, Channel) ->
+	Ack = #'basic.nack'{delivery_tag=Tag, multiple=Multiple, requeue=true},
+	amqp_channel:call(Channel, Ack).
+
 call(Queue, Message) -> 
 	Pid = vrpl_process:get({queue, Queue}),
 	gen_server:call(Pid, Message).
+
+check_tags(Deliveries, Channel) ->
+	LastAck = Deliveries#deliveries.last_ack,
+	LastNack = Deliveries#deliveries.last_nack,
+	{NextTag, {StartNack, EndNack}} = next_tags(Deliveries),
+	handle_tags(NextTag-1, LastAck, StartNack, EndNack, LastNack, Channel).
+	
+%% no pending acks, no pending nacks
+%% ack 0, true to acknowledge all outstanding messages to broker
+handle_tags(0, LastAck, 0, 0, LastNack, Channel) -> 
+	ack(0, true, Channel),
+	{LastAck, LastNack};
+
+%% pending acks, no pending nacks
+%% when the next ack is greater than the previous nack (prevent overlap)
+handle_tags(NextAck, _LastAck, 0, 0, LastNack, Channel)
+		when NextAck > LastNack ->
+	ack(NextAck, true, Channel),
+	{NextAck, LastNack};
+
+%% no pending acks
+%% if the last ack is less than where the nack run starts
+%% ack up that point before nacking to the end
+handle_tags(0, LastAck, StartNack, EndNack, _LastNack, Channel) 
+		when LastAck < StartNack ->
+	case StartNack - LastAck of
+		1 -> 
+			nack(EndNack, true, Channel),
+			{LastAck, EndNack};
+		_ ->
+			ack(StartNack-1, true, Channel),
+			nack(EndNack, true, Channel),
+			{StartNack-1, EndNack}
+	end;
+	
+%% pending acks & nacks
+handle_tags(NextAck, _LastAck, StartNack, EndNack, LastNack, Channel) 
+		when NextAck < StartNack ->
+	case StartNack - NextAck of
+		1 ->
+			ack(NextAck, true, Channel),
+			nack(EndNack, false, Channel),
+			{NextAck, EndNack};
+		_ ->
+			ack(NextAck, true, Channel),
+			{NextAck, LastNack}
+	end;
+
+handle_tags(NextAck, LastAck, StartNack, EndNack, _LastNack, Channel) 
+		when NextAck > EndNack ->
+	case StartNack - LastAck of
+		1 ->
+			nack(EndNack, true, Channel),
+			ack(NextAck, true, Channel),
+			{NextAck, EndNack};
+		_ ->
+			ack(StartNack-1, true, Channel),
+			nack(EndNack, true, Channel),
+			ack(NextAck, true, Channel),
+			{NextAck, EndNack}
+	end.
+
+next_tags(#deliveries{delivered=Delivered, nacks=Nacks}) -> 
+	next_tags(ordsets:to_list(Delivered), ordsets:to_list(Nacks)).
+
+next_tags([],[]) -> {0,{0,0}};
+next_tags([],Nacks) -> {0,get_consecutive_range(Nacks)};
+next_tags([A|_],[]) -> {A,{0,0}};
+next_tags([A|_],Nacks) -> {A,{get_consecutive_range(Nacks)}}.
+
+get_consecutive_range(List) -> get_consecutive_range(List, 0, 0).
+
+get_consecutive_range([],Start,Finish) -> {Start,Finish};
+get_consecutive_range([H|T], 0, Finish) ->
+	get_consecutive_range(T, H, Finish);
+get_consecutive_range([H|T], Start, Finish) when H-Finish =:= 1 ->
+	get_consecutive_range(T, Start, H);
+get_consecutive_range(_, Start, Finish) -> {Start, Finish}.
+
+% get_consecutive_range(List) ->
+% 	lists:foldl(fun(Y,{X1,X2}) ->
+% 		if 
+% 			X1 =:= 0 -> {Y,Y}; 
+% 			Y-X2 =:= 1 -> {X1,Y}; 
+% 			true -> {X1,X2} 
+% 		end 
+% 	end, {0,0}, List).
 
 decode(Envelope) ->
 	Body = iolist_to_binary(Envelope#envelope.body),
